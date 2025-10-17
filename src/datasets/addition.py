@@ -126,3 +126,22 @@ class AdditionDataset(torch.utils.data.Dataset):
                 out_step[i, j] = self.token_to_idx.index(steps[seq_idx + 1].split("\n")[i][j])
 
         return inp_step, out_step
+    
+
+def main():
+    data = AdditionDataset()
+
+    sample = data.data[0]
+
+    a = str(sample[0].item()).zfill(data.max_digits)
+    b = str(sample[1].item()).zfill(data.max_digits)
+
+    steps = AdditionDataset.run_algorithm(a, b)
+
+    string = "\n\n".join(str(n) for n in steps)
+
+    print(string)
+    
+
+if __name__ == "__main__":
+    main()
