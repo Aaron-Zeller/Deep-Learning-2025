@@ -10,7 +10,7 @@ class TransformerEncoderBlock(nn.Module):
         self.norm2 = nn.LayerNorm(d_model)
 
         self.ff = nn.Sequential(
-            nn.Linear(d_model, dim_feedforward), nn.ReLu(), nn.Dropout(dropout), nn.Linear(dim_feedforward, d_model)
+            nn.Linear(d_model, dim_feedforward), nn.ReLU(), nn.Dropout(dropout), nn.Linear(dim_feedforward, d_model)
         )
 
         self.drop = nn.Dropout(dropout)
@@ -36,7 +36,7 @@ class TransformerDecoderBlock(nn.Module):
         self.norm3 = nn.LayerNorm(d_model)
 
         self.ff = nn.Sequential(
-            nn.Linear(d_model, dim_feedforward), nn.ReLu(), nn.Dropout(dropout), nn.Linear(dim_feedforward, d_model)
+            nn.Linear(d_model, dim_feedforward), nn.ReLU(), nn.Dropout(dropout), nn.Linear(dim_feedforward, d_model)
         )
 
     def forward(
@@ -65,34 +65,42 @@ class TransformerDecoderBlock(nn.Module):
 
 # Ordering information for Attention
 class PositionalEncoding(nn.Module):
-    def __init__(self, d_model: int, height: int, width: int):
+    """
+    2D positional encoding using learned row and column embeddings.
+    Suitable for grid-like data (e.g. your blackboard addition dataset).
+    """
+
+    def __init__(self, d_model: int, height: int, width: int) -> None:
         super().__init__()
         self.H = height
         self.W = width
-        self.D = d_model
-        self.row = nn.Embedding(height, d_model)
-        self.col = nn.Embedding(width, d_model)
+        self.row_embed = nn.Embedding(height, d_model)
+        self.col_embed = nn.Embedding(width, d_model)
 
-    def forward(self, x: torch.Tensor, padding_mask: torch.Tensor = None) -> torch.Tensor:
-        # x is given as [B, T, D] B = Batch Size, T = H * W (flattened), D = Token Dim (Size)
-        B, T, D = x.shape
-
-        # Check if assumptions are met - Debugging REMOVE once it works
-        if T != self.H * self.W:
-            raise ValueError(f"T={T} must equal H*W={self.H*self.W}.")
-
+    def forward(self, x: torch.Tensor, pad_mask: torch.Tensor = None) -> torch.Tensor:
+        """
+        Args:
+            x: [B, H*W, D] flattened grid embeddings
+            pad_mask: optional [B, H*W] boolean mask
+        Returns:
+            [B, H*W, D] with positional information added
+        """
         device, dtype = x.device, x.dtype
-        idx = torch.arange(T, device=device)
-        rows = idx // self.W
-        cols = idx % self.W
-        pos_encoding = self.row(rows) + self.col(cols)
-        pos_encoding = pos_encoding.unsqueeze(0).to(dtype=dtype)
+        T = x.size(1)
+        if T != self.H * self.W:
+            raise ValueError(f"Expected T={self.H*self.W}, got {T}")
 
-        if padding_mask is not None:
-            pos_encoding = pos_encoding * (~padding_mask.bool()).unsqueeze(-1)
+        # Generate indices
+        row_ids = torch.arange(self.H, device=device).repeat_interleave(self.W)
+        col_ids = torch.arange(self.W, device=device).repeat(self.H)
 
-        # Inject positional encoding to token - allows the information to be propagated through network
-        return x + pos_encoding
+        pos = self.row_embed(row_ids) + self.col_embed(col_ids)  # [H*W, D]
+        pos = pos.unsqueeze(0).to(dtype)  # [1, H*W, D]
+
+        if pad_mask is not None:
+            pos = pos * (~pad_mask.bool()).unsqueeze(-1)
+
+        return x + pos
 
 
 # Ensures that only previous and current tokens are used -> creates causal structure
@@ -112,13 +120,17 @@ class TinyTransformer(nn.Module):
         dim_ff: int,
         max_len: int,
         dropout: int,
+        height: int = 5,
+        max_digits: int = 3,
     ):
         super().__init__()
+        self.height = height
+        self.width = max_digits + 3 + 1
 
         # Embeddings and Positional Encoding
         self.source_tokens = nn.Embedding(source_vocab, d_model)
         self.target_tokens = nn.Embedding(target_vocab, d_model)
-        self.pos_encoding = PositionalEncoding(d_model, max_len)
+        self.pos_encoding = PositionalEncoding(d_model, width=self.width, height=self.height)
 
         # Encoder Blocks
         self.encoder = nn.ModuleList(

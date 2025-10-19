@@ -1,6 +1,6 @@
 _target_: src.models.tiny.TinyTransformer   
-vocab_src: 15
-vocab_tgt: 15
+source_vocab: 15
+target_vocab: 15
 d_model: 64
 nhead: 2
 num_layers: 1
