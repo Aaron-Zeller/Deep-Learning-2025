@@ -1,1 +1,9 @@
-_target_: src.models.tiny.TinyTransformer
+_target_: src.models.tiny.TinyTransformer   
+vocab_src: 15
+vocab_tgt: 15
+d_model: 64
+nhead: 2
+num_layers: 1
+dim_ff: 128
+max_len: 128
+dropout: 0.1
