@@ -1,14 +1,16 @@
 import torch
+from torch.utils.data import Dataset
+from torch import Tensor
 
 
-class AdditionDataset(torch.utils.data.Dataset):
+class AdditionDataset(Dataset):
     """
     A simple dataset for addition problems, written out as step by step 2D blackboard grids.
     """
 
     def __init__(self, num_samples: int = 10000, max_digits: int = 3, seed: int = 42):
         """
-        :param num_samples: Number of samples to generate (N)
+        :param num_samples: Number of pairs to generate
         :param max_digits: Maximum number of digits in each number
         :param seed: Random seed for reproducibility
         """
@@ -20,12 +22,12 @@ class AdditionDataset(torch.utils.data.Dataset):
         self.data = self._generate_data()
         self.token_to_idx = list("0123456789+ -_\n")
 
-    def _generate_data(self):
+    def _generate_data(self) -> Tensor:
         """
         Generate addition problems and their solutions.
         Note: currently doesn't handle duplicates.
 
-        :return: (N, 2) pairs of numbers to add
+        :return: (num_samples, 2) pairs of numbers to add
         """
 
         rng = torch.Generator().manual_seed(self.seed)
@@ -34,7 +36,7 @@ class AdditionDataset(torch.utils.data.Dataset):
 
         return torch.stack([a, b], dim=-1)
 
-    def __len__(self):
+    def __len__(self) -> int:
         """
         :return: Length of the dataset. Note that we index each step individually, not the entire computation.
         """
@@ -42,7 +44,7 @@ class AdditionDataset(torch.utils.data.Dataset):
         return len(self.data) * (self.seq_len - 1)  # Can't use last step as input
 
     @staticmethod
-    def run_algorithm(a: str, b: str):
+    def run_algorithm(a: str, b: str) -> list[str]:
         """
         Run the addition algorithm step by step, returning a list of string representations of each step.
 
@@ -87,7 +89,7 @@ class AdditionDataset(torch.utils.data.Dataset):
 
         return steps
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int) -> tuple[Tensor, Tensor]:
         """
         Take a sample and convert into 2D blackboard grid representation. PyTorch doesn't like strings, so we convert
         the characters to their index in the token list.

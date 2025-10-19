@@ -62,3 +62,12 @@ python3 train.py
   year={2017}
 }
 ```
+
+```bibtex
+@article{shazeer2020glu,
+  title={Glu variants improve transformer},
+  author={Shazeer, Noam},
+  journal={arXiv preprint arXiv:2002.05202},
+  year={2020}
+}
+```
