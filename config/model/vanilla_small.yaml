@@ -1,0 +1,22 @@
+defaults:
+  - vanilla_base
+
+# Transformer Args
+dim: 384
+
+# Helper Variables
+$n_layers: 4
+$dropout: 0.1
+
+$mha:
+  _target_: src.blocks.mha.MultiHeadAttention
+  dim: ${model.dim}
+  n_heads: 4
+  dropout: ${model.$dropout}
+
+$ff:
+  _target_: src.blocks.ff.FeedForward
+  dim: ${model.dim}
+  expand_factor: 2
+  gated: true
+  dropout: ${model.$dropout}

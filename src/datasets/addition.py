@@ -1,20 +1,20 @@
 import torch
-from torch.utils.data import Dataset
 from torch import Tensor
 
+from src.interfaces import DatasetBase
 
-class AdditionDataset(Dataset):
-    """
-    A simple dataset for addition problems, written out as step by step 2D blackboard grids.
-    """
+
+class AdditionDataset(DatasetBase):
+    """Dataset for addition problems represented as step-by-step 2D blackboard grids."""
 
     def __init__(self, num_samples: int = 10000, max_digits: int = 3, seed: int = 42):
-        """
-        :param num_samples: Number of pairs to generate
-        :param max_digits: Maximum number of digits in each number
-        :param seed: Random seed for reproducibility
-        """
+        """Initialize addition dataset.
 
+        Args:
+            num_samples: Number of addition problems to generate.
+            max_digits: Maximum number of digits in each number.
+            seed: Random seed for reproducibility.
+        """
         self.num_samples = num_samples
         self.max_digits = max_digits
         self.seq_len = 2 * (max_digits + 1)
@@ -22,14 +22,17 @@ class AdditionDataset(Dataset):
         self.data = self._generate_data()
         self.token_to_idx = list("0123456789+ -_\n")
 
+    def vocab_size(self) -> int:
+        return len(self.token_to_idx)
+
     def _generate_data(self) -> Tensor:
-        """
-        Generate addition problems and their solutions.
-        Note: currently doesn't handle duplicates.
+        """Generate addition problems and their solutions.
 
-        :return: (num_samples, 2) pairs of numbers to add
-        """
+        Note: Currently doesn't handle duplicates.
 
+        Returns:
+            (num_samples, 2) Pairs of numbers to add.
+        """
         rng = torch.Generator().manual_seed(self.seed)
         a = torch.randint(0, 10**self.max_digits, (self.num_samples,), generator=rng)
         b = torch.randint(0, 10**self.max_digits, (self.num_samples,), generator=rng)
@@ -37,22 +40,26 @@ class AdditionDataset(Dataset):
         return torch.stack([a, b], dim=-1)
 
     def __len__(self) -> int:
-        """
-        :return: Length of the dataset. Note that we index each step individually, not the entire computation.
-        """
+        """Get dataset length.
 
+        Note: We index each step individually, not the entire computation.
+
+        Returns:
+            Dataset length (number of step transitions).
+        """
         return len(self.data) * (self.seq_len - 1)  # Can't use last step as input
 
     @staticmethod
     def run_algorithm(a: str, b: str) -> list[str]:
-        """
-        Run the addition algorithm step by step, returning a list of string representations of each step.
+        """Run addition algorithm step by step.
 
-        :param a: First summand as string
-        :param b: Second summand as string
-        :return: List of string representations of each step
-        """
+        Args:
+            a: First summand as string
+            b: Second summand as string
 
+        Returns:
+            List of string representations of each step
+        """
         max_digits = len(a)
 
         # String Format Utilities
@@ -90,24 +97,29 @@ class AdditionDataset(Dataset):
         return steps
 
     def __getitem__(self, idx: int) -> tuple[Tensor, Tensor]:
-        """
-        Take a sample and convert into 2D blackboard grid representation. PyTorch doesn't like strings, so we convert
-        the characters to their index in the token list.
+        """Get a dataset item as 2D blackboard grid representation.
 
-        Example Sequence:
+        Converts characters to their index in the token list.
+
+        Example sequence:
           ___     ___     _0_     _0_     10_     11_
            47      47      47      47      47      47
         +  91   +  91   +  91   +  91   +  91   +  91
         -----   -----   -----   -----   -----   -----
           ___     __8     __8     _38     _38     138
 
-        The grid has shape (h, w) = (5, max_digits + 3 + 1). Where the +3 is for the padding on the left and the +1 is
-        the newline character.
+        The grid has shape (h, w) = (5, max_digits + 3 + 1), where +3 is for
+        left padding and +1 is for the newline character.
 
-        :param idx: Item index
-        :return: Two consecutive steps of the algorithm as a 2D grid (h, w).
+        Args:
+            idx: Item index.
+
+        Returns:
+            Tuple of (input_step, output_step)
+
+            - input_step: (h, w) Input step as 2D grid.
+            - output_step: (h, w) Output step as 2D grid.
         """
-
         sample_idx = idx // self.seq_len
         seq_idx = idx % self.seq_len
 

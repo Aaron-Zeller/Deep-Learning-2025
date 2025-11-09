@@ -1,88 +1,52 @@
-import torch
+from typing import Optional
+
 import torch.nn as nn
 from torch import Tensor
 
-from src.blocks.mha import MultiHeadAttention
-from src.blocks.ff import FeedForward
+from src.interfaces import AttentionBase, FeedForwardBase, TransformerDecoderLayerBase
 
 
-class DecoderLayer(nn.Module):
-    """
-    A Decoder Layer block consisting of Multi-Head Self-/Cross-Attention and a Feed-Forward network.
-    """
+class DecoderLayer(TransformerDecoderLayerBase):
+    """Decoder layer with self-attention, cross-attention, and feed-forward network."""
 
     def __init__(
         self,
+        self_attn: AttentionBase,
+        cross_attn: AttentionBase,
+        ff: FeedForwardBase,
         dim: int,
-        n_heads: int,
-        src_dim: int = None,
-        tgt_dim: int = None,
-        mha_embed_bias: bool = False,
-        ff_expand_factor: int = 2,
-        ff_gated: bool = True,
-        ff_dropout: float = 0.0,
     ):
-        """
-        :param dim: See `src.blocks.mha.MultiHeadAttention`
-        :param n_heads: See `src.blocks.mha.MultiHeadAttention`
-        :param src_dim: Dimensionality of the Source sequence (if different from dim)
-        :param tgt_dim: Dimensionality of the Target sequence (if different from dim)
-        :param mha_embed_bias: See `src.blocks.mha.MultiHeadAttention`
-        :param ff_expand_factor: See `src.blocks.ff.FeedForward`
-        :param ff_gated: See `src.blocks.ff.FeedForward`
-        :param ff_dropout: See `src.blocks.ff.FeedForward`
-        """
+        """Initialize decoder layer.
 
+        Args:
+            self_attn: Self-attention module.
+            cross_attn: Cross-attention module.
+            ff: Feed-forward network module.
+            dim: Model dimensionality.
+        """
         super().__init__()
 
-        src_dim = src_dim or dim
-        tgt_dim = tgt_dim or dim
-
-        self.self_mha = MultiHeadAttention(
-            dim=dim,
-            n_heads=n_heads,
-            embed_bias=mha_embed_bias,
-            q_dim=tgt_dim,
-            ctx_dim=tgt_dim,
-        )
-        self.self_mha_norm = nn.LayerNorm(dim)
-
-        self.cross_mha = MultiHeadAttention(
-            dim=dim,
-            n_heads=n_heads,
-            embed_bias=mha_embed_bias,
-            q_dim=tgt_dim,
-            ctx_dim=src_dim,
-        )
-        self.cross_mha_norm = nn.LayerNorm(dim)
-
-        self.ff = FeedForward(
-            dim=dim,
-            expand_factor=ff_expand_factor,
-            gated=ff_gated,
-            dropout=ff_dropout,
-        )
+        self.self_attn = self_attn
+        self.self_attn_norm = nn.LayerNorm(dim)
+        self.cross_attn = cross_attn
+        self.cross_attn_norm = nn.LayerNorm(dim)
+        self.ff = ff
         self.ff_norm = nn.LayerNorm(dim)
 
     def forward(
         self,
-        x: Tensor,
-        y: Tensor,
-        mask: Tensor = None,
+        tgt: Tensor,
+        memory: Tensor,
+        tgt_mask: Optional[Tensor] = None,
+        memory_mask: Optional[Tensor] = None,
     ) -> tuple[Tensor, Tensor, Tensor]:
-        """
-        :param x: (b, s, ds) Source sequence (Context in cross-attention)
-        :param y: (b, t, dt) Target sequence
-        :param mask: (b, t, t) Self-Attention mask, convention is 0 for visible, 1 for masked
-        :return: ((b, t, dt) Outputs, (b, h, t, t) Self-Attention weights, (b, h, t, s) Cross-Attention weights)
-        """
+        residual, self_attn_weights = self.self_attn(tgt, tgt, mask=tgt_mask)
+        tgt = self.self_attn_norm(tgt + residual)
 
-        dy, self_attn = self.self_mha(y, y, mask=mask)
-        y = self.self_mha_norm(y + dy)
+        residual, cross_attn_weights = self.cross_attn(tgt, memory, mask=memory_mask)
+        tgt = self.cross_attn_norm(tgt + residual)
 
-        dy, cross_attn = self.cross_mha(y, x)
-        y = self.cross_mha_norm(y + dy)
+        residual = self.ff(tgt)
+        tgt = self.ff_norm(tgt + residual)
 
-        y = self.ff_norm(y + self.ff(y))
-
-        return y, self_attn, cross_attn
+        return tgt, self_attn_weights, cross_attn_weights

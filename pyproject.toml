@@ -27,13 +27,14 @@ dependencies = [
     "black==25.9.0",
     "pre-commit==4.3.0",
     "hydra-core==1.3.2",
+    "hydra-zen==0.16.0",
     "torchinfo==1.8.0",
+    "tensorboard==2.20.0",
     # Core
   # "torch",        # Manually install to match Accelerator version
   # "torchvision",  # Manually install to match Accelerator version
   # "lightning",  # Manually install to match Accelerator version
     "einops==0.8.1",
-    "x-transformers==2.9.2",
 ]
 authors = [
   {name = "Cyril Moser"},

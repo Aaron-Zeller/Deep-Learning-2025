@@ -1,3 +1,13 @@
 defaults:
+  - _self_
+  - runtime: default
+  - logging: default
+  - optim: adam
   - dataset: addition
-  - model: vanilla
+  - model: vanilla_base
+
+name: exp
+val_split: 0.1
+batch_size: 64
+n_epochs: 50
+resume: false
