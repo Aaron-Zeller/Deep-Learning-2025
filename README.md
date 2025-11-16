@@ -56,6 +56,12 @@ python3 train.py model=encoder_only_small resume_ckpt=outputs/exp/2025-11-16/16-
 python3 train.py model=encoder_only_small dataset.n_samples=1000
 ```
 
+## Tensorboard
+
+```bash
+tensorboard --logdir outputs/
+```
+
 ## References
 
 ```bibtex
