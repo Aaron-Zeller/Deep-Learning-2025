@@ -5,11 +5,11 @@ from typing import Optional
 
 import hydra
 import torch
-from torch import Tensor
 from hydra.core.hydra_config import HydraConfig
 from hydra.utils import instantiate
 from lightning.fabric import Fabric, seed_everything
 from omegaconf import DictConfig, OmegaConf
+from torch import Tensor
 from torch.utils.data import DataLoader, Subset, random_split
 from torch.utils.tensorboard import SummaryWriter
 from torchinfo import summary

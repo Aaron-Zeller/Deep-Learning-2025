@@ -1,6 +1,7 @@
+import logging
+
 import torch
 from torch import Tensor
-import logging
 
 from src.interfaces import DatasetBase
 
