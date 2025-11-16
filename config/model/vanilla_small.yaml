@@ -2,11 +2,10 @@ defaults:
   - vanilla_base
 
 # Transformer Args
-dim: 384
+dim: 128
 
 # Helper Variables
 $n_layers: 4
-$dropout: 0.1
 
 $mha:
   _target_: src.blocks.mha.MultiHeadAttention

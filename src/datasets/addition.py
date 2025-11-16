@@ -1,29 +1,41 @@
 import torch
 from torch import Tensor
+import logging
 
 from src.interfaces import DatasetBase
+
+logger = logging.getLogger(__name__)
 
 
 class AdditionDataset(DatasetBase):
     """Dataset for addition problems represented as step-by-step 2D blackboard grids."""
 
-    def __init__(self, num_samples: int = 10000, max_digits: int = 3, seed: int = 42):
+    def __init__(self, n_samples: int = 10000, max_digits: int = 3, seed: int = 42):
         """Initialize addition dataset.
 
         Args:
-            num_samples: Number of addition problems to generate.
+            n_samples: Number of addition problems to generate.
             max_digits: Maximum number of digits in each number.
             seed: Random seed for reproducibility.
         """
-        self.num_samples = num_samples
+        self.n_samples = n_samples
         self.max_digits = max_digits
+        self.h = 5
+        self.w = max_digits + 3 + 1
         self.seq_len = 2 * (max_digits + 1)
         self.seed = seed
         self.data = self._generate_data()
         self.token_to_idx = list("0123456789+ -_\n")
 
+        logger.info(
+            f"Initialized AdditionDataset with {n_samples} samples and {max_digits} digits => {len(self)} individual steps."
+        )
+
     def vocab_size(self) -> int:
         return len(self.token_to_idx)
+
+    def grid_size(self) -> tuple[int, int]:
+        return self.h, self.w
 
     def _generate_data(self) -> Tensor:
         """Generate addition problems and their solutions.
@@ -34,8 +46,8 @@ class AdditionDataset(DatasetBase):
             (num_samples, 2) Pairs of numbers to add.
         """
         rng = torch.Generator().manual_seed(self.seed)
-        a = torch.randint(0, 10**self.max_digits, (self.num_samples,), generator=rng)
-        b = torch.randint(0, 10**self.max_digits, (self.num_samples,), generator=rng)
+        a = torch.randint(0, 10**self.max_digits, (self.n_samples,), generator=rng)
+        b = torch.randint(0, 10**self.max_digits, (self.n_samples,), generator=rng)
 
         return torch.stack([a, b], dim=-1)
 
@@ -48,6 +60,26 @@ class AdditionDataset(DatasetBase):
             Dataset length (number of step transitions).
         """
         return len(self.data) * (self.seq_len - 1)  # Can't use last step as input
+
+    def get_example(self) -> Tensor:
+        sample = self.run_algorithm("112", "235")  # todo: avoid hardcoded values
+
+        steps = torch.ones((len(sample), self.h, self.w), dtype=torch.long) * self.token_to_idx.index("\n")
+
+        for b, s in enumerate(sample):
+            for i in range(self.h):
+                for j in range(self.w - 1):  # \n already filled
+                    steps[b, i, j] = self.token_to_idx.index(s.split("\n")[i][j])
+
+        return steps
+
+    def to_string(self, x: Tensor) -> str:
+        out = ""
+        for i in range(self.h):
+            for j in range(self.w - 1):  # \n already filled
+                out += self.token_to_idx[x[i, j].item()]
+            out += "\n"
+        return out
 
     @staticmethod
     def run_algorithm(a: str, b: str) -> list[str]:
@@ -130,13 +162,13 @@ class AdditionDataset(DatasetBase):
 
         steps = AdditionDataset.run_algorithm(a, b)
 
-        h, w = 5, self.max_digits + 3 + 1
-        inp_step = torch.ones((h, w), dtype=torch.uint32) * self.token_to_idx.index("\n")
-        out_step = torch.ones((h, w), dtype=torch.uint32) * self.token_to_idx.index("\n")
+        inp_step = torch.ones((self.h, self.w), dtype=torch.long) * self.token_to_idx.index("\n")
+        out_step = torch.ones((self.h, self.w), dtype=torch.long) * self.token_to_idx.index("\n")
 
-        for i in range(h):
-            for j in range(w - 1):  # \n already filled
+        next_seq_idx = seq_idx + 1 if seq_idx + 1 < len(steps) else seq_idx
+        for i in range(self.h):
+            for j in range(self.w - 1):  # \n already filled
                 inp_step[i, j] = self.token_to_idx.index(steps[seq_idx].split("\n")[i][j])
-                out_step[i, j] = self.token_to_idx.index(steps[seq_idx + 1].split("\n")[i][j])
+                out_step[i, j] = self.token_to_idx.index(steps[next_seq_idx].split("\n")[i][j])
 
         return inp_step, out_step

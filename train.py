@@ -1,45 +1,49 @@
-from pathlib import Path
 import logging
 import math
+from pathlib import Path
+from typing import Optional
 
 import hydra
-from hydra.core.hydra_config import HydraConfig
 import torch
-from torch.utils.tensorboard import SummaryWriter
-from torch.utils.data import random_split, DataLoader, Subset
+from torch import Tensor
+from hydra.core.hydra_config import HydraConfig
 from hydra.utils import instantiate
 from lightning.fabric import Fabric, seed_everything
 from omegaconf import DictConfig, OmegaConf
+from torch.utils.data import DataLoader, Subset, random_split
+from torch.utils.tensorboard import SummaryWriter
 from torchinfo import summary
 from tqdm import tqdm
 
-from src.interfaces import DatasetBase, TransformerBase
+from src.interfaces import DatasetBase, TransformerBase, TransformerHeadBase
 from src.utils import drop_helpers
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class Trainer:
     def __init__(self, cfg: DictConfig, output_dir: Path):
         self.cfg = cfg
+        self.output_dir = output_dir
+
         # =================== #
         # ===== Logging ===== #
         # =================== #
-        log_dir = output_dir / "logs"
+        log_dir = self.output_dir / "logs"
         log_dir.mkdir(exist_ok=True)
         self.log_writer = SummaryWriter(log_dir=str(log_dir))
 
         # ================ #
         # ===== Data ===== #
         # ================ #
-        dataset: DatasetBase = instantiate(cfg.dataset)
+        self.dataset: DatasetBase = instantiate(cfg.dataset)
 
         split_rng = torch.Generator()
         split_rng.manual_seed(cfg.runtime.seed)
-        val_size = int(len(dataset) * cfg.val_split)
-        train_size = len(dataset) - val_size
-        train_dataset, val_dataset = random_split(dataset, [train_size, val_size], generator=split_rng)
-        log.info(f"Dataset split: Train ({train_size}), Val ({val_size})")
+        val_size = int(len(self.dataset) * cfg.val_split)
+        train_size = len(self.dataset) - val_size
+        train_dataset, val_dataset = random_split(self.dataset, [train_size, val_size], generator=split_rng)
+        logger.info(f"Dataset split: Train ({train_size}), Val ({val_size})")
 
         train_log_dataset = Subset(
             train_dataset, torch.randperm(train_size, generator=split_rng)[: cfg.logging.n_log_samples]
@@ -75,20 +79,24 @@ class Trainer:
         model_cfg = OmegaConf.to_container(cfg.model, resolve=True)
         drop_helpers(model_cfg)
 
-        self.model: TransformerBase = instantiate(model_cfg, vocab_size=dataset.vocab_size())
+        self.model: TransformerBase = instantiate(model_cfg, dataset=self.dataset)
+        self.head: TransformerHeadBase = instantiate(cfg.head, transformer=self.model, dataset=self.dataset)
 
         self.log_model()
 
         # ================== #
         # ===== Optim ====== #
         # ================== #
-        self.optim = instantiate(cfg.optim, params=self.model.parameters())
+        self.optim = instantiate(cfg.optim, params=[*self.model.parameters(), *self.head.parameters()])
 
         # ================== #
         # ===== Fabric ===== #
         # ================== #
         self.fabric = Fabric(accelerator=cfg.runtime.accelerator, devices=cfg.runtime.devices)
+
         self.model, self.optim = self.fabric.setup(self.model, self.optim)
+        self.head = self.fabric.setup(self.head)
+
         self.train_dataloader, self.train_log_dataloader, self.val_dataloader = self.fabric.setup_dataloaders(
             self.train_dataloader, self.train_log_dataloader, self.val_dataloader
         )
@@ -96,37 +104,184 @@ class Trainer:
         # ====================== #
         # ===== Checkpoints ==== #
         # ====================== #
-        self.ckpt_dir = output_dir / "checkpoints"
+        self.ckpt_dir = self.output_dir / "checkpoints"
         self.ckpt_dir.mkdir(exist_ok=True)
 
         self.start_epoch = 1
-        if cfg.resume:
-            ckpts = [*sorted(self.ckpt_dir.glob("*.pth"))]
-            if len(ckpts) > 0:
-                ckpt = ckpts[-1]
-                log.info(f"Resuming from checkpoint: {ckpt}")
+        if cfg.resume or cfg.resume_ckpt is not None:
+            ckpt = Path.cwd() / cfg.resume_ckpt if cfg.resume_ckpt is not None else None
+            if ckpt is None:  # try to find latest checkpoint
+                exp_dir = self.output_dir.parent.parent
+                ckpts = [*sorted(exp_dir.glob("**/**/checkpoints/*.pth"))]
 
-                rest = self.fabric.load(ckpt, dict(model=self.model, optim=self.optim))
+                if len(ckpts) > 0:
+                    ckpt = ckpts[-1]
+
+            if ckpt is not None:
+                logger.info(f"Resuming from checkpoint: {ckpt.relative_to(Path.cwd())}")
+                rest = self.fabric.load(ckpt, dict(model=self.model, head=self.head, optim=self.optim))
                 self.start_epoch = rest["epoch"] + 1  # don't train twice
             else:
-                log.info("No checkpoints found, training from scratch.")
+                logger.info("No checkpoints found, training from scratch.")
 
     def log_model(self):
-        summary(self.model)
+        summary_kwargs = dict(col_names=["num_params", "params_percent"], verbose=0)
+        model_summary = summary(self.model, depth=4, **summary_kwargs)
+        head_summary = summary(self.head, **summary_kwargs)
+
+        logger.info("Model Summary:\n" + str(model_summary))
+        logger.info("Head Summary:\n" + str(head_summary))
+
+        self.log_writer.add_text("model_summary", f"```{model_summary}```")
+        self.log_writer.add_text("head_summary", f"```{head_summary}```")
 
     def save_epoch(self, epoch: int):
         epoch_str = str(epoch).zfill(int(math.log10(self.cfg.n_epochs)) + 1)
         ckpt_path = self.ckpt_dir / f"ckpt_{epoch_str}.pth"
-        self.fabric.save(ckpt_path, dict(model=self.model, optim=self.optim, epoch=epoch))
-        logging.info(f"Epoch {epoch}: Saved checkpoint to {ckpt_path}")
+        self.fabric.save(ckpt_path, dict(model=self.model, head=self.head, optim=self.optim, epoch=epoch))
+        logger.info(f"Epoch {epoch}: Saved checkpoint to {ckpt_path.relative_to(Path.cwd())}")
+
+    def log_param_histograms(self, step: int):
+        total_param_norm, n_param_norm = 0.0, 0
+        total_grad_norm, n_grad_norm = 0.0, 0
+
+        params = [*self.model.named_parameters(), *self.head.named_parameters()]
+        for name, param in params:
+            w = param.detach()
+            total_param_norm += (w**2).sum().item()
+            n_param_norm += w.numel()
+
+            self.log_writer.add_histogram(f"{name}/param", w.cpu(), step)
+
+            if param.grad is not None:
+                g = param.grad.detach()
+                total_grad_norm += (g**2).sum().item()
+                n_grad_norm += g.numel()
+
+                self.log_writer.add_histogram(f"{name}/grad", g.cpu(), step)
+
+        avg_param_norm = total_param_norm / n_param_norm
+        avg_grad_norm = total_grad_norm / n_grad_norm
+
+        self.log_writer.add_scalar("train/avg_param_norm", avg_param_norm, step)
+        self.log_writer.add_scalar("train/avg_grad_norm", avg_grad_norm, step)
+
+    def forward(
+        self, batch: tuple[Tensor, Optional[Tensor]]
+    ) -> tuple[
+        Tensor, Tensor, Tensor, Optional[Tensor], Optional[Tensor], Optional[Tensor], Optional[Tensor], Optional[Tensor]
+    ]:
+        x_in, x_out = batch
+
+        src, tgt = self.model.prepare_tokens(x_in, x_in, self.head)  # todo: check if this makes sense
+        enc_out, dec_out, enc_attns, dec_self_attns, dec_cross_attns = self.model(src, tgt)
+
+        y_pred = self.head(dec_out if dec_out is not None else enc_out)
+
+        if x_out is not None:
+            loss, accuracy = self.head.forward_loss(y_pred, x_in, x_out)
+        else:
+            loss = accuracy = self.fabric.to_device(torch.tensor(0.0))
+
+        return loss, accuracy, y_pred, enc_out, dec_out, enc_attns, dec_self_attns, dec_cross_attns
+
+    def solve(self, epoch: int):
+        sample = self.fabric.to_device(self.dataset.get_example())
+        x_in = sample[0:1, ...]
+
+        gt_steps = [self.dataset.to_string(sample[i]).split("\n") for i in range(sample.shape[0])]
+        steps: list[list[str]] = [self.dataset.to_string(x_in[0]).split("\n")]
+
+        for i in range(len(gt_steps) - 1):
+            with torch.no_grad():
+                _, _, y_pred, _, _, _, _, _ = self.forward((x_in, None))
+                out = self.head.step(x_in, y_pred)
+
+            x_in = out
+            steps.append(self.dataset.to_string(x_in[0]).split("\n"))
+
+        gt_str = "\n".join("   ".join(gt_steps[i][j] for i in range(len(gt_steps))) for j in range(len(gt_steps[0])))
+        pred_str = "\n".join("   ".join(steps[i][j] for i in range(len(steps))) for j in range(len(steps[0])))
+        print("=== Solution ===")
+        print(gt_str)
+        print("=== Prediction ===")
+        print(pred_str)
+
+        if epoch == 0:
+            self.log_writer.add_text("full_example/gt", f"```\n{gt_str}```", epoch)
+
+        self.log_writer.add_text("full_example/pred", f"```\n{pred_str}```", epoch)
 
     def val_epoch(self, epoch: int):
-        # todo
-        pass
+        self.model.eval()
+        self.head.eval()
+
+        self.solve(epoch)
+
+        total_loss = 0.0
+        total_accuracy = 0.0
+        it = tqdm(self.val_dataloader, unit="batch", desc=f"Val Epoch {epoch}/{self.cfg.n_epochs}")
+        for i, batch in enumerate(it):
+            batch: tuple[Tensor, Tensor]
+
+            with torch.no_grad():
+                loss, accuracy, y_pred, _, _, _, _, _ = self.forward(batch)  # todo: log outputs
+
+            total_loss += loss.item()
+            total_accuracy += accuracy.item()
+
+            if i < self.cfg.logging.n_log_samples:
+                x_in, x_out = batch[0][0], batch[1][0]
+
+                x_in_str = self.dataset.to_string(x_in)
+                x_out_str = self.dataset.to_string(x_out)
+
+                with torch.no_grad():
+                    out = self.head.step(x_in[None, ...], y_pred[0:1, ...])
+
+                out_str = self.dataset.to_string(out[0])
+
+                log_str = ""
+                for line_in, gt_line_out, line_out in zip(
+                    x_in_str.split("\n")[:-1], x_out_str.split("\n")[:-1], out_str.split("\n")[:-1]
+                ):
+                    log_str += f"{line_in}    -->    {gt_line_out}    |    {line_out}\n"
+
+                self.log_writer.add_text(f"val/sample_{i}", f"```\n{log_str}```", epoch)
+
+        avg_loss = total_loss / len(self.val_dataloader)
+        avg_accuracy = total_accuracy / len(self.val_dataloader)
+
+        self.log_writer.add_scalar("val/loss", avg_loss, epoch)
+        logger.info(f"Epoch {epoch}: Val Loss: {avg_loss:.6f}")
+
+        self.log_writer.add_scalar("val/accuracy", avg_accuracy, epoch)
+        logger.info(f"Epoch {epoch}: Val Accuracy: {100*avg_accuracy:.2f}%")
 
     def train_epoch(self, epoch: int):
-        # todo
-        pass
+        self.model.train()
+        self.head.train()
+
+        it = tqdm(self.train_dataloader, unit="batch", desc=f"Epoch {epoch}/{self.cfg.n_epochs}")
+        for i, batch in enumerate(it):
+            batch: tuple[Tensor, Tensor]
+
+            self.optim.zero_grad()
+            loss, accuracy = self.forward(batch)[:2]
+            self.fabric.backward(loss)
+            self.optim.step()
+
+            step = (epoch - 1) * len(self.train_dataloader) + i
+            self.log_writer.add_scalar("train/loss", loss.item(), step)
+            self.log_writer.add_scalar("train/accuracy", accuracy.item(), step)
+
+            it.set_postfix(dict(loss=loss.item(), accuracy=f"{100*accuracy.item():.2f}%"))
+
+            self.log_writer.add_scalar("train/lr", self.optim.param_groups[0]["lr"], step)
+            self.log_writer.add_scalar("train/epoch", epoch, step)
+
+            if step % self.cfg.logging.param_hist_every_n_steps == 0:
+                self.log_param_histograms(step)
 
     def run(self):
         if self.start_epoch == 1:
@@ -153,12 +308,10 @@ def main(cfg: DictConfig):
     # Check for TF32 support
     if torch.cuda.is_available() and torch.cuda.is_tf32_supported() and cfg.runtime.allow_tf32:
         torch.set_float32_matmul_precision("high")  # this is "highest" otherwise
-        log.info("Enabled TF32 (Tensor Cores). Turn this off if there are precision issues.")
+        logger.info("Enabled TF32 (Tensor Cores). Turn this off if there are precision issues.")
 
-    output_dir = Path(HydraConfig.get().runtime.output_dir) / cfg.name
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    log.info(f"Writing outputs to: {output_dir}")
+    output_dir = Path(HydraConfig.get().runtime.output_dir)
+    logger.info(f"Writing outputs to: {output_dir}")
 
     trainer = Trainer(cfg, output_dir)
     trainer.run()

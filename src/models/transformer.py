@@ -1,10 +1,20 @@
+import logging
 from typing import Optional
 
 import torch.nn as nn
 from einops import rearrange
 from torch import Tensor
 
-from src.interfaces import PositionalEncodingBase, TransformerBase, TransformerDecoderBase, TransformerEncoderBase
+from src.interfaces import (
+    DatasetBase,
+    PositionalEncodingBase,
+    TransformerBase,
+    TransformerDecoderBase,
+    TransformerEncoderBase,
+    TransformerHeadBase,
+)
+
+logger = logging.getLogger(__name__)
 
 
 class Transformer(TransformerBase):
@@ -13,9 +23,9 @@ class Transformer(TransformerBase):
     def __init__(
         self,
         pos_encoding: PositionalEncodingBase,
-        encoder: TransformerEncoderBase,
-        decoder: TransformerDecoderBase,
-        vocab_size: int,
+        encoder: Optional[TransformerEncoderBase],
+        decoder: Optional[TransformerDecoderBase],
+        dataset: DatasetBase,
         dim: int,
     ):
         """Initialize transformer.
@@ -24,26 +34,41 @@ class Transformer(TransformerBase):
             pos_encoding: Positional encoding module.
             encoder: Transformer encoder module.
             decoder: Transformer decoder module.
-            vocab_size: Vocabulary size.
+            dataset: Dataset instance.
             dim: Model dimensionality.
         """
         super().__init__()
 
+        vocab_size = dataset.vocab_size()
         self.src_embed = nn.Embedding(vocab_size, dim)
         self.tgt_embed = nn.Embedding(vocab_size, dim)
         self.pos_encoding = pos_encoding
         self.encoder = encoder
         self.decoder = decoder
-        self.prober = nn.Linear(dim, vocab_size)
 
-    def forward(
+        if encoder is not None and decoder is None:
+            logger.info("Transformer is Encoder-Only.")
+        elif encoder is None and decoder is not None:
+            logger.info("Transformer is Decoder-Only.")
+        else:
+            logger.info("Transformer is Encoder-Decoder.")
+
+        self._dim = dim
+
+    def dim(self) -> int:
+        """Get model dimensionality.
+
+        Returns:
+            Model dimensionality.
+        """
+        return self._dim
+
+    def prepare_tokens(
         self,
         src: Tensor,
         tgt: Tensor,
-        src_mask: Tensor,
-        tgt_mask: Optional[Tensor] = None,
-        memory_mask: Optional[Tensor] = None,
-    ) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]:
+        head: TransformerHeadBase,
+    ) -> tuple[Tensor, Tensor]:
         src_orig_size = src.shape
         tgt_orig_size = tgt.shape
 
@@ -59,14 +84,26 @@ class Transformer(TransformerBase):
         src_enc = self.pos_encoding(src_emb, src_orig_size)
         tgt_enc = self.pos_encoding(tgt_emb, tgt_orig_size)
 
+        src_enc, tgt_enc = head.inject(src_enc, tgt_enc, self.pos_encoding, src_orig_size, tgt_orig_size)
+
+        return src_enc, tgt_enc
+
+    def forward(
+        self,
+        src: Tensor,
+        tgt: Tensor,
+        src_mask: Optional[Tensor] = None,
+        tgt_mask: Optional[Tensor] = None,
+        memory_mask: Optional[Tensor] = None,
+    ) -> tuple[Optional[Tensor], Optional[Tensor], Optional[Tensor], Optional[Tensor], Optional[Tensor]]:
         # Apply encoder-decoder
-        memory, enc_attns = self.encoder(src_enc, mask=src_mask)
+        memory, enc_attns = self.encoder(src, mask=src_mask)
+
+        if self.decoder is None:  # Encoder-Only, todo: Decoder-Only
+            return memory, None, enc_attns, None, None
+
         tgt_dec, dec_self_attns, dec_cross_attns = self.decoder(
-            tgt=tgt_enc, memory=memory, tgt_mask=tgt_mask, memory_mask=memory_mask
+            tgt=tgt, memory=memory, tgt_mask=tgt_mask, memory_mask=memory_mask
         )
 
-        # Project to vocabulary
-        logits = self.prober(tgt_dec)
-        probs = logits.softmax(dim=-1)
-
-        return probs, logits, memory, tgt_dec, enc_attns, dec_self_attns, dec_cross_attns
+        return memory, tgt_dec, enc_attns, dec_self_attns, dec_cross_attns

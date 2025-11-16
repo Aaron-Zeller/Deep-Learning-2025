@@ -49,6 +49,11 @@ This will run `black` code formatting to ensure consistency. Note that if the ch
 
 ```bash
 python3 train.py
+# More examples:
+python3 train.py name=myexperiment
+python3 train.py model=encoder_only_small resume=true # finds latest checkpoint
+python3 train.py model=encoder_only_small resume_ckpt=outputs/exp/2025-11-16/16-47-17/checkpoints/ckpt_15.pth
+python3 train.py model=encoder_only_small dataset.n_samples=1000
 ```
 
 ## References

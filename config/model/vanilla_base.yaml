@@ -1,7 +1,7 @@
 _target_: src.models.transformer.Transformer
 
 # Transformer Args
-dim: 512
+dim: 384
 
 # Helper Variables
 $n_layers: 6

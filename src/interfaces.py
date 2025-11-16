@@ -22,6 +22,35 @@ class DatasetBase(Dataset, metaclass=ABCMeta):
         ...
 
     @abstractmethod
+    def grid_size(self) -> tuple[int, int]:
+        """Get grid size.
+
+        Returns:
+            Grid size as (height, width).
+        """
+        ...
+
+    @abstractmethod
+    def get_example(self) -> Tensor:
+        """Get a single example from the dataset.
+
+        Returns:
+            (h, w) Example tensor.
+        """
+        ...
+
+    def to_string(self, x: Tensor) -> str:
+        """Convert tensor representation to string.
+
+        Args:
+            x: (h, w) Input tensor.
+
+        Returns:
+            String representation.
+        """
+        ...
+
+    @abstractmethod
     def __len__(self):
         """Get dataset length.
 
@@ -222,18 +251,114 @@ class TransformerDecoderBase(nn.Module, metaclass=ABCMeta):
         __call__ = forward
 
 
+class TransformerHeadBase(nn.Module, metaclass=ABCMeta):
+    """Abstract class for transformer heads."""
+
+    def inject(
+        self,
+        src: Tensor,
+        tgt: Tensor,
+        pos_encoding: PositionalEncodingBase,
+        src_orig_size: Size,
+        tgt_orig_size: Size,
+    ) -> tuple[Tensor, Tensor]:
+        """Inject tokens into source and target sequences for the transformer. This is used for head-specific tokens.
+
+        Args:
+            src: (b, s, ds) Source sequence.
+            tgt: (b, t, dt) Target sequence.
+            pos_encoding: Positional encoding module.
+            src_orig_size: Original size of the source (for 2D positional encodings).
+            tgt_orig_size: Original size of the target (for 2D positional encodings).
+        Returns:
+            Tuple of (src, tgt)
+            - src: (b, s, ds) Modified source sequence.
+            - tgt: (b, t, dt) Modified target sequence.
+        """
+        return src, tgt
+
+    @abstractmethod
+    def step(self, x_in: Tensor, y_pred: Tensor) -> Tensor:
+        """Perform a calculation step.
+
+        Args:
+            x_in: (b, h, w) Input values.
+            y_pred: (b, ...) Predicted output from the head.
+        Returns:
+            y_sampled: (b, h, w) Sampled output.
+        """
+        ...
+
+    @abstractmethod
+    def forward_loss(self, y_pred: Tensor, x_in: Tensor, x_out: Tensor) -> tuple[Tensor, Tensor]:
+        """Compute loss for the transformer head.
+
+        Args:
+            y_pred: (b, ...) Predicted output from the head.
+            x_in: (b, ...) Input values.
+            x_out: (b, ...) Target output values.
+        Returns:
+            Tuple of (loss, accuracy)
+            - loss: (1,) Loss.
+            - accuracy: (1,) Accuracy.
+        """
+        ...
+
+    @abstractmethod
+    def forward(self, x: Tensor) -> Tensor:
+        """Apply transformer head.
+
+        Args:
+            x: (b, s, ds) Latent sequence.
+        Returns:
+            (b, ...) Head output.
+        """
+        ...
+
+    if typing.TYPE_CHECKING:
+        __call__ = forward
+
+
 class TransformerBase(nn.Module, metaclass=ABCMeta):
     """Abstract class for transformer models."""
+
+    @abstractmethod
+    def dim(self) -> int:
+        """Get model dimensionality.
+
+        Returns:
+            Model dimensionality.
+        """
+        ...
+
+    @abstractmethod
+    def prepare_tokens(
+        self,
+        src: Tensor,
+        tgt: Tensor,
+        head: TransformerHeadBase,
+    ) -> tuple[Tensor, Tensor]:
+        """Prepare source and target tokens for the transformer.
+
+        Args:
+            src: (b, h, w) Source input.
+            tgt: (b, h, w) Target input.
+            head: Transformer head instance.
+        Returns:
+            Tuple of (src, tgt)
+            - src: (b, s, d) Prepared source sequence.
+            - tgt: (b, t, d) Prepared target sequence.
+        """
 
     @abstractmethod
     def forward(
         self,
         src: Tensor,
         tgt: Tensor,
-        src_mask: Tensor,
+        src_mask: Optional[Tensor] = None,
         tgt_mask: Optional[Tensor] = None,
         memory_mask: Optional[Tensor] = None,
-    ) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]:
+    ) -> tuple[Optional[Tensor], Optional[Tensor], Optional[Tensor], Optional[Tensor], Optional[Tensor]]:
         """Apply vanilla transformer.
 
         Args:
@@ -244,11 +369,8 @@ class TransformerBase(nn.Module, metaclass=ABCMeta):
             memory_mask: (b, t, s) Cross-attention mask, where 0=visible, 1=masked.
 
         Returns:
-            Tuple of (probs, logits, encoder_output, decoder_output,
-            encoder_attns, decoder_self_attns, decoder_cross_attns)
+            Tuple of (encoder_output, decoder_output, encoder_attns, decoder_self_attns, decoder_cross_attns)
 
-            - probs: (b, t, n_tokens) Token probabilities.
-            - logits: (b, t, n_tokens) Token logits.
             - encoder_output: (b, s, ds) Encoder output.
             - decoder_output: (b, t, dt) Decoder output.
             - encoder_attns: (num_layers, b, h, s, s) Encoder attention weights per layer.
