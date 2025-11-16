@@ -30,6 +30,8 @@ dependencies = [
     "hydra-zen==0.16.0",
     "torchinfo==1.8.0",
     "tensorboard==2.20.0",
+    "matplotlib==3.10.7",
+    "tqdm==4.67.1",
     # Core
   # "torch",        # Manually install to match Accelerator version
   # "torchvision",  # Manually install to match Accelerator version
