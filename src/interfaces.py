@@ -283,7 +283,7 @@ class TransformerHeadBase(nn.Module, metaclass=ABCMeta):
 
         Args:
             x_in: (b, h, w) Input values.
-            y_pred: (b, ...) Predicted output from the head.
+            y_pred: (b, s, vocab_size) Predicted output from the head.
         Returns:
             y_sampled: (b, h, w) Sampled output.
         """
@@ -294,9 +294,9 @@ class TransformerHeadBase(nn.Module, metaclass=ABCMeta):
         """Compute loss for the transformer head.
 
         Args:
-            y_pred: (b, ...) Predicted output from the head.
-            x_in: (b, ...) Input values.
-            x_out: (b, ...) Target output values.
+            y_pred: (b, n, vocab_size) Predicted output from the head.
+            x_in: (b, h, w) Input values.
+            x_out: (b, h, w) Target output values.
         Returns:
             Tuple of (loss, accuracy)
             - loss: (1,) Loss.
@@ -311,7 +311,7 @@ class TransformerHeadBase(nn.Module, metaclass=ABCMeta):
         Args:
             x: (b, s, ds) Latent sequence.
         Returns:
-            (b, ...) Head output.
+            (b, s, vocab_size) Head output.
         """
         ...
 

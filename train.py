@@ -10,13 +10,13 @@ from hydra.utils import instantiate
 from lightning.fabric import Fabric, seed_everything
 from omegaconf import DictConfig, OmegaConf
 from torch import Tensor
-from torch.utils.data import DataLoader, Subset, random_split
+from torch.utils.data import Subset, random_split
 from torch.utils.tensorboard import SummaryWriter
 from torchinfo import summary
 from tqdm import tqdm
 
 from src.interfaces import DatasetBase, TransformerBase, TransformerHeadBase
-from src.utils import drop_helpers
+from src.utils import build_data_loader, drop_helpers
 
 logger = logging.getLogger(__name__)
 
@@ -49,29 +49,9 @@ class Trainer:
             train_dataset, torch.randperm(train_size, generator=split_rng)[: cfg.logging.n_log_samples]
         )
 
-        self.train_dataloader = DataLoader(
-            train_dataset,
-            batch_size=cfg.batch_size,
-            shuffle=True,
-            num_workers=cfg.runtime.n_workers,
-            pin_memory=cfg.runtime.pin_memory,
-        )
-
-        self.train_log_dataloader = DataLoader(
-            train_log_dataset,
-            batch_size=cfg.batch_size,
-            shuffle=False,
-            num_workers=cfg.runtime.n_workers,
-            pin_memory=cfg.runtime.pin_memory,
-        )
-
-        self.val_dataloader = DataLoader(
-            val_dataset,
-            batch_size=cfg.batch_size,
-            shuffle=False,
-            num_workers=cfg.runtime.n_workers,
-            pin_memory=cfg.runtime.pin_memory,
-        )
+        self.train_dataloader = build_data_loader(train_dataset, cfg, train=True)
+        self.train_log_dataloader = build_data_loader(train_log_dataset, cfg, train=False)
+        self.val_dataloader = build_data_loader(val_dataset, cfg, train=False)
 
         # ================= #
         # ===== Model ===== #

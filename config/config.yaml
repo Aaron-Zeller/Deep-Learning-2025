@@ -4,7 +4,7 @@ defaults:
   - logging: default
   - optim: adam
   - dataset: addition
-  - model: vanilla_base
+  - model: encoder_only_small
   - head: global_action_distribution
 
 name: exp

@@ -12,28 +12,28 @@ class GlobalActionDistributionHead(TransformerHeadBase):
 
     def __init__(
         self,
-        n_latents: int,
+        n_registers: int,
         transformer: TransformerBase,
         dataset: DatasetBase,
     ):
         """Initialize global action distribution head.
 
         Args:
-            n_latents: Number of latent tokens.
+            n_registers: Number of register tokens. This helps avoiding contamination of the data tokens.
             transformer: Transformer model.
             dataset: Dataset instance.
         """
         super().__init__()
 
-        self.n_latents = n_latents
+        self.n_registers = n_registers
         self.dim = transformer.dim()
         self.h, self.w = dataset.grid_size()
         self.vocab_size = dataset.vocab_size()
 
-        _latents = torch.randn(self.n_latents, self.dim) / (self.dim**0.5)
-        self.latents = nn.Parameter(_latents)
+        _registers = torch.randn(self.n_registers, self.dim)
+        self.registers = nn.Parameter(_registers)
 
-        self.proj = nn.Linear(self.n_latents * self.dim, self.h * self.w * self.vocab_size)
+        self.proj = nn.Conv1d(self.dim, self.vocab_size, kernel_size=1)
 
     def inject(
         self,
@@ -45,19 +45,19 @@ class GlobalActionDistributionHead(TransformerHeadBase):
     ) -> tuple[Tensor, Tensor]:
         b = src.shape[0]
 
-        latents = repeat(self.latents[None, ...], "1 n d -> b n d", b=b)
-        src = torch.cat([latents, src], dim=1)
+        registers = repeat(self.registers[None, ...], "1 n d -> b n d", b=b)
+        src = torch.cat([registers, src], dim=1)
 
         return src, tgt
 
     def step(self, x_in: Tensor, y_pred: Tensor) -> Tensor:
-        b = x_in.shape[0]
+        b, h, w = x_in.shape
 
-        y_pred_flat = rearrange(y_pred, "b h w v -> b (h w v)")
+        y_pred_flat = rearrange(y_pred, "b s v -> b (s v)")
 
         max_indices = y_pred_flat.argmax(dim=1)
 
-        i, j, v = torch.unravel_index(max_indices, (self.h, self.w, self.vocab_size))
+        i, j, v = torch.unravel_index(max_indices, (h, w, self.vocab_size))
 
         out = x_in.clone()
         out[torch.arange(b), i, j] = v
@@ -65,11 +65,14 @@ class GlobalActionDistributionHead(TransformerHeadBase):
         return out
 
     def forward_loss(self, y_pred: Tensor, x_in: Tensor, x_out: Tensor) -> tuple[Tensor, Tensor]:
+        b, h, w = x_in.shape
+
         diff = x_in != x_out
 
         loc = torch.where(diff)
         v = x_out[diff]
 
+        y_pred = rearrange(y_pred, "b (h w) v -> b h w v", h=h, w=w, v=self.vocab_size)
         y_target = torch.zeros_like(y_pred)
         y_target[*loc, v] = 1.0
 
@@ -83,10 +86,10 @@ class GlobalActionDistributionHead(TransformerHeadBase):
         return loss, accuracy
 
     def forward(self, x: Tensor) -> Tensor:
-        latents = x[:, : self.n_latents, :]
-        latents = rearrange(latents, "b n d -> b (n d)")
+        grid = x[:, self.n_registers :, :]  # Drop register tokens
+        grid = rearrange(grid, "b s d -> b d s")
 
-        logits = self.proj(latents)
-        logits = rearrange(logits, "b (h w v) -> b h w v", v=self.vocab_size, h=self.h, w=self.w)
+        logits = self.proj(grid)
+        logits = rearrange(logits, "b d s -> b s d")
 
         return logits

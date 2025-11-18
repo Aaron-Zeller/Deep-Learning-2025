@@ -63,7 +63,12 @@ class AdditionDataset(DatasetBase):
         return len(self.data) * (self.seq_len - 1)  # Can't use last step as input
 
     def get_example(self) -> Tensor:
-        sample = self.run_algorithm("112", "235")  # todo: avoid hardcoded values
+        sample = self.data[0]
+
+        a = str(sample[0].item()).zfill(self.max_digits)
+        b = str(sample[1].item()).zfill(self.max_digits)
+
+        sample = self.run_algorithm(a, b)
 
         steps = torch.ones((len(sample), self.h, self.w), dtype=torch.long) * self.token_to_idx.index("\n")
 
