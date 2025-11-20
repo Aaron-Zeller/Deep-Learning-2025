@@ -4,11 +4,9 @@ from typing import Optional
 import torch
 import torch.nn as nn
 from einops import rearrange
-from rotary_embedding_torch import RotaryEmbedding
 from torch import Tensor
 
 from src.interfaces import AttentionBase, BaseRelativePositionalEncoding
-from src.utils import get_forward_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +67,6 @@ class MultiHeadAttention(AttentionBase):
 
         # Apply relative positional encoding if possible
         if self.relative_pos_encoding is not None:
-            print(f"rel pos enc type: {type(self.relative_pos_encoding)}")
             q, k = self.relative_pos_encoding(q, k)
 
         # Compute q @ k^T / sqrt(d)

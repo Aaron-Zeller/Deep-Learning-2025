@@ -17,10 +17,14 @@ class RotaryPositionalEncoding(BaseRelativePositionalEncoding):
             dim: Token dimensionality.
             n_heads: Number of attention heads.
         """
+        super().__init__()
+
+        print(f"initialize with dim: {dim} and n_heads: {n_heads}")
 
         # We apply the rotary embedding to each token in every head separately.
-        self.rope_h = RotaryEmbedding(dim=dim // n_heads)
-        self.rope_w = RotaryEmbedding(dim=dim // n_heads)
+        dim_head = dim // n_heads  # this better be even
+        self.rope_h = RotaryEmbedding(dim=dim_head // 2)
+        self.rope_w = RotaryEmbedding(dim=dim_head // 2)
 
     def forward(self, q: Tensor, k: Tensor) -> tuple[Tensor, Tensor]:
         # Fetch the grid size
