@@ -1,9 +1,14 @@
+import logging
+
 import torch
 import torch.nn as nn
 from einops import rearrange
 from torch import Tensor
 
 from src.interfaces import AttentionBase
+from src.utils import get_forward_metadata
+
+logger = logging.getLogger(__name__)
 
 
 class MultiHeadAttention(AttentionBase):
@@ -51,6 +56,8 @@ class MultiHeadAttention(AttentionBase):
         ctx: Tensor,
         mask: torch.Tensor = None,
     ) -> tuple[Tensor, Tensor]:
+        orig_shape = get_forward_metadata("orig_shape")
+        logger.info(f"MultiHeadAttention called with orig_shape={orig_shape}")
         # Apply projection
         q, k, v = map(lambda f, x: f(x), (self.query, self.key, self.value), (q, ctx, ctx))
 

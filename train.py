@@ -16,7 +16,7 @@ from torchinfo import summary
 from tqdm import tqdm
 
 from src.interfaces import DatasetBase, TransformerBase, TransformerHeadBase
-from src.utils import build_data_loader, drop_helpers
+from src.utils import build_data_loader, drop_helpers, forward_context
 
 logger = logging.getLogger(__name__)
 
@@ -146,19 +146,20 @@ class Trainer:
     ) -> tuple[
         Tensor, Tensor, Tensor, Optional[Tensor], Optional[Tensor], Optional[Tensor], Optional[Tensor], Optional[Tensor]
     ]:
-        x_in, x_out = batch
+        with forward_context(orig_shape=batch[0].shape):
+            x_in, x_out = batch
 
-        src, tgt = self.model.prepare_tokens(x_in, x_in, self.head)  # todo: check if this makes sense
-        enc_out, dec_out, enc_attns, dec_self_attns, dec_cross_attns = self.model(src, tgt)
+            src, tgt = self.model.prepare_tokens(x_in, x_in, self.head)  # todo: check if this makes sense
+            enc_out, dec_out, enc_attns, dec_self_attns, dec_cross_attns = self.model(src, tgt)
 
-        y_pred = self.head(dec_out if dec_out is not None else enc_out)
+            y_pred = self.head(dec_out if dec_out is not None else enc_out)
 
-        if x_out is not None:
-            loss, accuracy = self.head.forward_loss(y_pred, x_in, x_out)
-        else:
-            loss = accuracy = self.fabric.to_device(torch.tensor(0.0))
+            if x_out is not None:
+                loss, accuracy = self.head.forward_loss(y_pred, x_in, x_out)
+            else:
+                loss = accuracy = self.fabric.to_device(torch.tensor(0.0))
 
-        return loss, accuracy, y_pred, enc_out, dec_out, enc_attns, dec_self_attns, dec_cross_attns
+            return loss, accuracy, y_pred, enc_out, dec_out, enc_attns, dec_self_attns, dec_cross_attns
 
     def solve(self, epoch: int):
         sample = self.fabric.to_device(self.dataset.get_example())
