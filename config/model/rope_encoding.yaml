@@ -1,0 +1,3 @@
+defaults:
+  - encoder_only_small
+  - override pos_encoding: identity

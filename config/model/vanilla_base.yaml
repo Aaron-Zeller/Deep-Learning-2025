@@ -1,3 +1,7 @@
+defaults:
+  - _self_
+  - pos_encoding: freq_1d
+
 _target_: src.models.transformer.Transformer
 
 # Transformer Args
@@ -21,11 +25,6 @@ $ff:
     _target_: torch.nn.GELU
   gated: true
   dropout: ${model.$dropout}
-
-# Submodules
-pos_encoding:
-  _target_: src.encodings.freq_1d.Frequency1DEncoding
-  dim: ${model.dim}
 
 encoder:
   _target_: src.blocks.encoder.TransformerEncoder

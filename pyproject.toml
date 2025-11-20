@@ -33,10 +33,11 @@ dependencies = [
     "matplotlib==3.10.7",
     "tqdm==4.67.1",
     # Core
-  # "torch",        # Manually install to match Accelerator version
-  # "torchvision",  # Manually install to match Accelerator version
-  # "lightning",  # Manually install to match Accelerator version
+    # "torch",        # Manually install to match Accelerator version
+    # "torchvision",  # Manually install to match Accelerator version
+    # "lightning",  # Manually install to match Accelerator version
     "einops==0.8.1",
+    "rotary-embedding-torch>=0.8.9",
 ]
 authors = [
   {name = "Cyril Moser"},
