@@ -51,9 +51,13 @@ class MultiHeadAttention(AttentionBase):
         ctx: Tensor,
         mask: torch.Tensor = None,
     ) -> tuple[Tensor, Tensor]:
+        # Apply projection
         q, k, v = map(lambda f, x: f(x), (self.query, self.key, self.value), (q, ctx, ctx))
+
+        # Split into 'n_heads' heads
         q, k, v = map(lambda x: rearrange(x, "b s (h d) -> b h s d", h=self.n_heads), (q, k, v))
 
+        # Compute q @ k^T / sqrt(d)
         scores = torch.einsum("b h s d, b h t d -> b h s t", q, k) * self.scale
 
         if mask is not None:
@@ -61,9 +65,13 @@ class MultiHeadAttention(AttentionBase):
             mask = mask.unsqueeze(1)
             scores = scores.masked_fill(mask == 1, float("-inf"))
 
+        # Apparently all we need
         attn = scores.softmax(dim=-1)
 
+        # Softmax(q @ k^T / sqrt(d)) @ v
         out = torch.einsum("b h s t, b h t d -> b h s d", attn, v)
+
+        # Combine heads
         out = rearrange(out, "b h s d -> b s (h d)")
         out = self.output(out)
 
