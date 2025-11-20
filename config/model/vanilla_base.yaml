@@ -17,6 +17,8 @@ $ff:
   _target_: src.blocks.ff.FeedForward
   dim: ${model.dim}
   expand_factor: 4
+  act_fn:
+    _target_: torch.nn.GELU
   gated: true
   dropout: ${model.$dropout}
 
