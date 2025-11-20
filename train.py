@@ -98,7 +98,7 @@ class Trainer:
                     ckpt = ckpts[-1]
 
             if ckpt is not None:
-                logger.info(f"Resuming from checkpoint: {ckpt.relative_to(Path.cwd())}")
+                logger.info(f"Resuming from checkpoint: {ckpt}")
                 rest = self.fabric.load(ckpt, dict(model=self.model, head=self.head, optim=self.optim))
                 self.start_epoch = rest["epoch"] + 1  # don't train twice
             else:
@@ -119,7 +119,7 @@ class Trainer:
         epoch_str = str(epoch).zfill(int(math.log10(self.cfg.n_epochs)) + 1)
         ckpt_path = self.ckpt_dir / f"ckpt_{epoch_str}.pth"
         self.fabric.save(ckpt_path, dict(model=self.model, head=self.head, optim=self.optim, epoch=epoch))
-        logger.info(f"Epoch {epoch}: Saved checkpoint to {ckpt_path.relative_to(Path.cwd())}")
+        logger.info(f"Epoch {epoch}: Saved checkpoint to {ckpt_path}")
 
     def log_param_histograms(self, step: int):
         total_param_norm, n_param_norm = 0.0, 0
