@@ -26,53 +26,50 @@ class Trainer:
         self.cfg = cfg
         self.output_dir = output_dir
 
-        # =================== #
-        # ===== Logging ===== #
-        # =================== #
+        self._init_logging()
+        self._init_data()
+        self._init_model()
+        self._init_optim()
+        self._init_fabric()
+        self._init_checkpoints()
+
+    def _init_logging(self):
         log_dir = self.output_dir / "logs"
         log_dir.mkdir(exist_ok=True)
         self.log_writer = SummaryWriter(log_dir=str(log_dir))
 
-        # ================ #
-        # ===== Data ===== #
-        # ================ #
-        self.dataset: DatasetBase = instantiate(cfg.dataset)
+    def _init_data(self):
+        self.dataset: DatasetBase = instantiate(self.cfg.dataset)
 
         split_rng = torch.Generator()
-        split_rng.manual_seed(cfg.runtime.seed)
-        val_size = int(len(self.dataset) * cfg.val_split)
+        split_rng.manual_seed(self.cfg.runtime.seed)
+        val_size = int(len(self.dataset) * self.cfg.val_split)
         train_size = len(self.dataset) - val_size
         train_dataset, val_dataset = random_split(self.dataset, [train_size, val_size], generator=split_rng)
         logger.info(f"Dataset split: Train ({train_size}), Val ({val_size})")
 
         train_log_dataset = Subset(
-            train_dataset, torch.randperm(train_size, generator=split_rng)[: cfg.logging.n_log_samples]
+            train_dataset, torch.randperm(train_size, generator=split_rng)[: self.cfg.logging.n_log_samples]
         )
 
-        self.train_dataloader = build_data_loader(train_dataset, cfg, train=True)
-        self.train_log_dataloader = build_data_loader(train_log_dataset, cfg, train=False)
-        self.val_dataloader = build_data_loader(val_dataset, cfg, train=False)
+        self.train_dataloader = build_data_loader(train_dataset, self.cfg, train=True)
+        self.train_log_dataloader = build_data_loader(train_log_dataset, self.cfg, train=False)
+        self.val_dataloader = build_data_loader(val_dataset, self.cfg, train=False)
 
-        # ================= #
-        # ===== Model ===== #
-        # ================= #
-        model_cfg = OmegaConf.to_container(cfg.model, resolve=True)
+    def _init_model(self):
+        model_cfg = OmegaConf.to_container(self.cfg.model, resolve=True)
         drop_helpers(model_cfg)
 
         self.model: TransformerBase = instantiate(model_cfg, dataset=self.dataset)
-        self.head: TransformerHeadBase = instantiate(cfg.head, transformer=self.model, dataset=self.dataset)
+        self.head: TransformerHeadBase = instantiate(self.cfg.head, transformer=self.model, dataset=self.dataset)
 
         self.log_model()
 
-        # ================== #
-        # ===== Optim ====== #
-        # ================== #
-        self.optim = instantiate(cfg.optim, params=[*self.model.parameters(), *self.head.parameters()])
+    def _init_optim(self):
+        self.optim = instantiate(self.cfg.optim, params=[*self.model.parameters(), *self.head.parameters()])
 
-        # ================== #
-        # ===== Fabric ===== #
-        # ================== #
-        self.fabric = Fabric(accelerator=cfg.runtime.accelerator, devices=cfg.runtime.devices)
+    def _init_fabric(self):
+        self.fabric = Fabric(accelerator=self.cfg.runtime.accelerator, devices=self.cfg.runtime.devices)
 
         self.model, self.optim = self.fabric.setup(self.model, self.optim)
         self.head = self.fabric.setup(self.head)
@@ -81,15 +78,13 @@ class Trainer:
             self.train_dataloader, self.train_log_dataloader, self.val_dataloader
         )
 
-        # ====================== #
-        # ===== Checkpoints ==== #
-        # ====================== #
+    def _init_checkpoints(self):
         self.ckpt_dir = self.output_dir / "checkpoints"
         self.ckpt_dir.mkdir(exist_ok=True)
 
         self.start_epoch = 1
-        if cfg.resume or cfg.resume_ckpt is not None:
-            ckpt = Path.cwd() / cfg.resume_ckpt if cfg.resume_ckpt is not None else None
+        if self.cfg.resume or self.cfg.resume_ckpt is not None:
+            ckpt = Path.cwd() / self.cfg.resume_ckpt if self.cfg.resume_ckpt is not None else None
             if ckpt is None:  # try to find latest checkpoint
                 exp_dir = self.output_dir.parent.parent
                 ckpts = [*sorted(exp_dir.glob("**/**/checkpoints/*.pth"))]
