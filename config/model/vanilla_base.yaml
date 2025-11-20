@@ -1,0 +1,47 @@
+_target_: src.models.transformer.Transformer
+
+# Transformer Args
+dim: 384
+
+# Helper Variables
+$n_layers: 6
+$dropout: 0.1
+
+$mha:
+  _target_: src.blocks.mha.MultiHeadAttention
+  dim: ${model.dim}
+  n_heads: 8
+  dropout: ${model.$dropout}
+
+$ff:
+  _target_: src.blocks.ff.FeedForward
+  dim: ${model.dim}
+  expand_factor: 4
+  act_fn:
+    _target_: torch.nn.GELU
+  gated: true
+  dropout: ${model.$dropout}
+
+# Submodules
+pos_encoding:
+  _target_: src.encodings.freq_1d.Frequency1DEncoding
+  dim: ${model.dim}
+
+encoder:
+  _target_: src.blocks.encoder.TransformerEncoder
+  n_layers: ${model.$n_layers}
+  layer:
+    _target_: src.blocks.encoder_layer.EncoderLayer
+    dim: ${model.dim}
+    mha: ${model.$mha}
+    ff: ${model.$ff}
+
+decoder:
+  _target_: src.blocks.decoder.TransformerDecoder
+  n_layers: ${model.$n_layers}
+  layer:
+    _target_: src.blocks.decoder_layer.DecoderLayer
+    dim: ${model.dim}
+    self_attn: ${model.$mha}
+    cross_attn: ${model.$mha}
+    ff: ${model.$ff}

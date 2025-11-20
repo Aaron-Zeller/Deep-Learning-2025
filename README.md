@@ -49,6 +49,17 @@ This will run `black` code formatting to ensure consistency. Note that if the ch
 
 ```bash
 python3 train.py
+# More examples:
+python3 train.py name=myexperiment
+python3 train.py model=encoder_only_small resume=true # finds latest checkpoint
+python3 train.py model=encoder_only_small resume_ckpt=outputs/exp/2025-11-16/16-47-17/checkpoints/ckpt_15.pth
+python3 train.py model=encoder_only_small dataset.n_samples=1000
+```
+
+## Tensorboard
+
+```bash
+tensorboard --logdir outputs/
 ```
 
 ## References
@@ -60,5 +71,14 @@ python3 train.py
   journal={Advances in neural information processing systems},
   volume={30},
   year={2017}
+}
+```
+
+```bibtex
+@article{shazeer2020glu,
+  title={Glu variants improve transformer},
+  author={Shazeer, Noam},
+  journal={arXiv preprint arXiv:2002.05202},
+  year={2020}
 }
 ```

@@ -1,56 +1,103 @@
+import logging
+
 import torch
+from torch import Tensor
+
+from src.interfaces import DatasetBase
+
+logger = logging.getLogger(__name__)
 
 
-class AdditionDataset(torch.utils.data.Dataset):
-    """
-    A simple dataset for addition problems, written out as step by step 2D blackboard grids.
-    """
+class AdditionDataset(DatasetBase):
+    """Dataset for addition problems represented as step-by-step 2D blackboard grids."""
 
-    def __init__(self, num_samples: int = 10000, max_digits: int = 3, seed: int = 42):
+    def __init__(self, n_samples: int = 10000, max_digits: int = 3, seed: int = 42):
+        """Initialize addition dataset.
+
+        Args:
+            n_samples: Number of addition problems to generate.
+            max_digits: Maximum number of digits in each number.
+            seed: Random seed for reproducibility.
         """
-        :param num_samples: Number of samples to generate (N)
-        :param max_digits: Maximum number of digits in each number
-        :param seed: Random seed for reproducibility
-        """
-
-        self.num_samples = num_samples
+        self.n_samples = n_samples
         self.max_digits = max_digits
+        self.h = 5
+        self.w = max_digits + 3 + 1
         self.seq_len = 2 * (max_digits + 1)
         self.seed = seed
         self.data = self._generate_data()
         self.token_to_idx = list("0123456789+ -_\n")
 
-    def _generate_data(self):
-        """
-        Generate addition problems and their solutions.
-        Note: currently doesn't handle duplicates.
+        logger.info(
+            f"Initialized AdditionDataset with {n_samples} samples and {max_digits} digits => {len(self)} individual steps."
+        )
 
-        :return: (N, 2) pairs of numbers to add
-        """
+    def vocab_size(self) -> int:
+        return len(self.token_to_idx)
 
+    def grid_size(self) -> tuple[int, int]:
+        return self.h, self.w
+
+    def _generate_data(self) -> Tensor:
+        """Generate addition problems and their solutions.
+
+        Note: Currently doesn't handle duplicates.
+
+        Returns:
+            (num_samples, 2) Pairs of numbers to add.
+        """
         rng = torch.Generator().manual_seed(self.seed)
-        a = torch.randint(0, 10**self.max_digits, (self.num_samples,), generator=rng)
-        b = torch.randint(0, 10**self.max_digits, (self.num_samples,), generator=rng)
+        a = torch.randint(0, 10**self.max_digits, (self.n_samples,), generator=rng)
+        b = torch.randint(0, 10**self.max_digits, (self.n_samples,), generator=rng)
 
         return torch.stack([a, b], dim=-1)
 
-    def __len__(self):
-        """
-        :return: Length of the dataset. Note that we index each step individually, not the entire computation.
-        """
+    def __len__(self) -> int:
+        """Get dataset length.
 
+        Note: We index each step individually, not the entire computation.
+
+        Returns:
+            Dataset length (number of step transitions).
+        """
         return len(self.data) * (self.seq_len - 1)  # Can't use last step as input
 
+    def get_example(self) -> Tensor:
+        sample = self.data[0]
+
+        a = str(sample[0].item()).zfill(self.max_digits)
+        b = str(sample[1].item()).zfill(self.max_digits)
+
+        sample = self.run_algorithm(a, b)
+
+        steps = torch.ones((len(sample), self.h, self.w), dtype=torch.long) * self.token_to_idx.index("\n")
+
+        for b, s in enumerate(sample):
+            for i in range(self.h):
+                for j in range(self.w - 1):  # \n already filled
+                    steps[b, i, j] = self.token_to_idx.index(s.split("\n")[i][j])
+
+        return steps
+
+    def to_string(self, x: Tensor) -> str:
+        out = ""
+        for i in range(self.h):
+            for j in range(self.w - 1):  # \n already filled
+                out += self.token_to_idx[x[i, j].item()]
+            out += "\n"
+        return out
+
     @staticmethod
-    def run_algorithm(a: str, b: str):
-        """
-        Run the addition algorithm step by step, returning a list of string representations of each step.
+    def run_algorithm(a: str, b: str) -> list[str]:
+        """Run addition algorithm step by step.
 
-        :param a: First summand as string
-        :param b: Second summand as string
-        :return: List of string representations of each step
-        """
+        Args:
+            a: First summand as string
+            b: Second summand as string
 
+        Returns:
+            List of string representations of each step
+        """
         max_digits = len(a)
 
         # String Format Utilities
@@ -87,25 +134,30 @@ class AdditionDataset(torch.utils.data.Dataset):
 
         return steps
 
-    def __getitem__(self, idx):
-        """
-        Take a sample and convert into 2D blackboard grid representation. PyTorch doesn't like strings, so we convert
-        the characters to their index in the token list.
+    def __getitem__(self, idx: int) -> tuple[Tensor, Tensor]:
+        """Get a dataset item as 2D blackboard grid representation.
 
-        Example Sequence:
+        Converts characters to their index in the token list.
+
+        Example sequence:
           ___     ___     _0_     _0_     10_     11_
            47      47      47      47      47      47
         +  91   +  91   +  91   +  91   +  91   +  91
         -----   -----   -----   -----   -----   -----
           ___     __8     __8     _38     _38     138
 
-        The grid has shape (h, w) = (5, max_digits + 3 + 1). Where the +3 is for the padding on the left and the +1 is
-        the newline character.
+        The grid has shape (h, w) = (5, max_digits + 3 + 1), where +3 is for
+        left padding and +1 is for the newline character.
 
-        :param idx: Item index
-        :return: Two consecutive steps of the algorithm as a 2D grid (h, w).
+        Args:
+            idx: Item index.
+
+        Returns:
+            Tuple of (input_step, output_step)
+
+            - input_step: (h, w) Input step as 2D grid.
+            - output_step: (h, w) Output step as 2D grid.
         """
-
         sample_idx = idx // self.seq_len
         seq_idx = idx % self.seq_len
 
@@ -116,13 +168,13 @@ class AdditionDataset(torch.utils.data.Dataset):
 
         steps = AdditionDataset.run_algorithm(a, b)
 
-        h, w = 5, self.max_digits + 3 + 1
-        inp_step = torch.ones((h, w), dtype=torch.uint32) * self.token_to_idx.index("\n")
-        out_step = torch.ones((h, w), dtype=torch.uint32) * self.token_to_idx.index("\n")
+        inp_step = torch.ones((self.h, self.w), dtype=torch.long) * self.token_to_idx.index("\n")
+        out_step = torch.ones((self.h, self.w), dtype=torch.long) * self.token_to_idx.index("\n")
 
-        for i in range(h):
-            for j in range(w - 1):  # \n already filled
+        next_seq_idx = seq_idx + 1 if seq_idx + 1 < len(steps) else seq_idx
+        for i in range(self.h):
+            for j in range(self.w - 1):  # \n already filled
                 inp_step[i, j] = self.token_to_idx.index(steps[seq_idx].split("\n")[i][j])
-                out_step[i, j] = self.token_to_idx.index(steps[seq_idx + 1].split("\n")[i][j])
+                out_step[i, j] = self.token_to_idx.index(steps[next_seq_idx].split("\n")[i][j])
 
         return inp_step, out_step

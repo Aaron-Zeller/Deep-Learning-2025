@@ -1,3 +1,19 @@
 defaults:
+  - _self_
+  - runtime: default
+  - logging: default
+  - optim: adam
   - dataset: addition
-  - model: vanilla
+  - model: encoder_only_small
+  - head: global_action_distribution
+
+name: exp
+val_split: 0.1
+batch_size: 64
+n_epochs: 50
+resume: false
+resume_ckpt: null
+
+hydra:
+  run:
+    dir: outputs/${name}/${now:%Y-%m-%d}/${now:%H-%M-%S}

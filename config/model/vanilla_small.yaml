@@ -1,0 +1,23 @@
+defaults:
+  - vanilla_base
+
+# Transformer Args
+dim: 128
+
+# Helper Variables
+$n_layers: 4
+
+$mha:
+  _target_: src.blocks.mha.MultiHeadAttention
+  dim: ${model.dim}
+  n_heads: 4
+  dropout: ${model.$dropout}
+
+$ff:
+  _target_: src.blocks.ff.FeedForward
+  dim: ${model.dim}
+  expand_factor: 2
+  act_fn:
+    _target_: torch.nn.GELU
+  gated: true
+  dropout: ${model.$dropout}

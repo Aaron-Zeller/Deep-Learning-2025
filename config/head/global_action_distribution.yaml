@@ -1,0 +1,3 @@
+_target_: src.heads.global_action_distribution.GlobalActionDistributionHead
+
+n_registers: 1

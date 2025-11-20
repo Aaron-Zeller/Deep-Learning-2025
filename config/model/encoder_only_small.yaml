@@ -1,0 +1,4 @@
+defaults:
+  - vanilla_small
+
+decoder: null

@@ -1,0 +1,7 @@
+seed: 42
+detect_anomaly: false
+accelerator: auto
+devices: 1
+allow_tf32: true # Tensor Cores
+n_workers: 8
+pin_memory: true
