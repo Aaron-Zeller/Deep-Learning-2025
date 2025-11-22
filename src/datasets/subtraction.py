@@ -111,7 +111,7 @@ class SubtractionDataset(DatasetBase):
         # String Format Utilities
         blank_line = lambda x: " " * 2 + "".join(str(d) if d >= 0 else "_" for d in x[::-1])
         a_line = lambda x: " " * 3 + x
-        b_line = lambda x: "+" + " " * 2 + x
+        b_line = lambda x: "-" + " " * 2 + x
         sep_line = lambda: "-" * (max_digits + 3)
         make_step = lambda _carry, _a, _b, _out: "\n".join(
             [blank_line(_carry), a_line(_a), b_line(_b), sep_line(), blank_line(_out)]
