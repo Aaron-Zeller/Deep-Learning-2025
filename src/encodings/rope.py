@@ -3,28 +3,26 @@ from einops import rearrange
 from rotary_embedding_torch import RotaryEmbedding
 from torch import Size, Tensor
 
-from src.interfaces import BaseRelativePositionalEncoding
+from src.interfaces import RelativePositionalEncodingBase
 from src.utils import get_forward_metadata
 
 
-class RotaryPositionalEncoding(BaseRelativePositionalEncoding):
+class RotaryPositionalEncoding(RelativePositionalEncodingBase):
     """Rotary positional encoding (Su et al., 2021)"""
 
-    def __init__(self, dim: int, n_heads: int):
+    def __init__(self, dim: int, n_heads: int, theta: float = 10_000):
         """Initialize rotary positional encoding.
 
         Args:
             dim: Token dimensionality.
             n_heads: Number of attention heads.
+            theta: Base frequency for rotary embeddings.
         """
         super().__init__()
 
-        print(f"initialize with dim: {dim} and n_heads: {n_heads}")
-
         # We apply the rotary embedding to each token in every head separately.
         dim_head = dim // n_heads  # this better be even
-        self.rope_h = RotaryEmbedding(dim=dim_head // 2)
-        self.rope_w = RotaryEmbedding(dim=dim_head // 2)
+        self.rope = RotaryEmbedding(dim=dim_head // 2, theta=theta)
 
     def forward(self, q: Tensor, k: Tensor) -> tuple[Tensor, Tensor]:
         # Fetch the grid size
@@ -34,7 +32,7 @@ class RotaryPositionalEncoding(BaseRelativePositionalEncoding):
         q = self._apply_2d_rope(q, h, w)
         k = self._apply_2d_rope(k, h, w)
 
-        return (q, k)
+        return q, k
 
     def _apply_2d_rope(self, x: Tensor, h: int, w: int) -> Tensor:
         """Apply 2D RoPE encoding to x. The features of x are being splitted into
@@ -62,12 +60,12 @@ class RotaryPositionalEncoding(BaseRelativePositionalEncoding):
 
         # Apply rope to height
         x_h = rearrange(x_h, "b h gh gw d -> b (h gw) gh d")
-        x_h = self.rope_h.rotate_queries_or_keys(x_h)
+        x_h = self.rope.rotate_queries_or_keys(x_h)
         x_h = rearrange(x_h, "b (h gw) gh d -> b h (gh gw) d", h=n_heads, gw=w)
 
         # Apply rope to width
         x_w = rearrange(x_w, "b h gh gw d -> b (h gh) gw d")
-        x_w = self.rope_h.rotate_queries_or_keys(x_w)
+        x_w = self.rope.rotate_queries_or_keys(x_w)
         x_w = rearrange(x_w, "b (h gh) gw d -> b h (gh gw) d", h=n_heads, gh=h)
 
         # Concatenate back together

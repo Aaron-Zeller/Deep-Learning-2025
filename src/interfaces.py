@@ -85,7 +85,7 @@ class PositionalEncodingBase(nn.Module, metaclass=ABCMeta):
         __call__ = forward
 
 
-class BaseRelativePositionalEncoding(nn.Module, metaclass=ABCMeta):
+class RelativePositionalEncodingBase(nn.Module, metaclass=ABCMeta):
     """Abstract class for relative positional encodings."""
 
     def forward(self, q: Tensor, k: Tensor) -> tuple[Tensor, Tensor]:

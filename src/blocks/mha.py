@@ -6,7 +6,7 @@ import torch.nn as nn
 from einops import rearrange
 from torch import Tensor
 
-from src.interfaces import AttentionBase, BaseRelativePositionalEncoding
+from src.interfaces import AttentionBase, RelativePositionalEncodingBase
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ class MultiHeadAttention(AttentionBase):
         q_dim: int = None,
         ctx_dim: int = None,
         dropout: float = 0.0,
-        relative_pos_encoding: Optional[BaseRelativePositionalEncoding] = None,
+        relative_pos_encoding: Optional[RelativePositionalEncodingBase] = None,
     ):
         """Initialize multi-head attention.
 
