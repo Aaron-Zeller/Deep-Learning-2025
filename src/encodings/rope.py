@@ -10,7 +10,7 @@ from src.utils import get_forward_metadata
 class RotaryPositionalEncoding(RelativePositionalEncodingBase):
     """Rotary positional encoding (Su et al., 2021)"""
 
-    def __init__(self, dim: int, n_heads: int, theta: float = 10_000):
+    def __init__(self, dim: int, theta: float = 10_000):
         """Initialize rotary positional encoding.
 
         Args:
@@ -20,9 +20,9 @@ class RotaryPositionalEncoding(RelativePositionalEncodingBase):
         """
         super().__init__()
 
-        # We apply the rotary embedding to each token in every head separately.
-        dim_head = dim // n_heads  # this better be even
-        self.rope = RotaryEmbedding(dim=dim_head // 2, theta=theta)
+        # The user is responsible for ensuring that dim is correctly set
+        self.dim = dim
+        self.rope = RotaryEmbedding(dim=dim, theta=theta)
 
     def forward(self, q: Tensor, k: Tensor) -> tuple[Tensor, Tensor]:
         # Fetch the grid size
@@ -45,18 +45,21 @@ class RotaryPositionalEncoding(RelativePositionalEncodingBase):
             w: width of the grid
         """
         b, n_heads, s, d_full = x.shape
-        d_half = d_full // 2
 
         # Remove the head specific registers
         n_registers = s - (h * w)
         registers = x[..., :n_registers, :]
         x = x[..., n_registers:, :]
 
-        x = rearrange(x, "b h (gh gw) d -> b h gh gw d", gh=h, gw=w)
+        # Not all features are used for rope
+        x_rope = x[..., : 2 * self.dim]
+        x_keep = x[..., 2 * self.dim :]
+
+        x_rope = rearrange(x_rope, "b h (gh gw) d -> b h gh gw d", gh=h, gw=w)
 
         # Split x in both dimensions
-        x_h = x[..., :d_half]
-        x_w = x[..., d_half:]
+        x_h = x_rope[..., : self.dim]
+        x_w = x_rope[..., self.dim : 2 * self.dim]
 
         # Apply rope to height
         x_h = rearrange(x_h, "b h gh gw d -> b (h gw) gh d")
@@ -69,7 +72,7 @@ class RotaryPositionalEncoding(RelativePositionalEncodingBase):
         x_w = rearrange(x_w, "b (h gh) gw d -> b h (gh gw) d", h=n_heads, gh=h)
 
         # Concatenate back together
-        x = torch.cat([x_h, x_w], dim=-1)
+        x = torch.cat([x_h, x_w, x_keep], dim=-1)
 
         # Add registers back
         x = torch.cat([registers, x], dim=2)
