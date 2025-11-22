@@ -3,7 +3,7 @@ defaults:
   - runtime: default
   - logging: default
   - optim: adam
-  - dataset: addition
+  - dataset: subtraction
   - model: encoder_only_small
   - head: global_action_distribution
 
