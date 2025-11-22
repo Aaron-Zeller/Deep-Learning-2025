@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 class MultiplicationDataset(DatasetBase):
     """Dataset for multiplication problems represented as step-by-step 2D blackboard grids."""
 
-    def __init__(self, n_samples: int = 10000, max_digits: int = 3, seed: int = 42):
+    def __init__(self, n_samples: int = 10000, max_digits: int = 2, seed: int = 42):
         """Initialize multiplication dataset.
 
         Args:
@@ -89,12 +89,13 @@ class MultiplicationDataset(DatasetBase):
         return out
 
     @staticmethod
-    def run_algorithm(a: str, b: str) -> list[str]:
+    def run_algorithm(a: str, b: str, max_steps: int = None) -> list[str]:
         """Run multiplication algorithm step by step.
 
         Args:
             a: First number as string
             b: Second number as string
+            max_steps: Upperbound the maximal number of steps to be computed. Compute everything if None
 
         Returns:
             List of string representations of each step
@@ -142,6 +143,9 @@ class MultiplicationDataset(DatasetBase):
 
                 mults[row][-num_zeros - 2] = mult // 10
                 steps.append(make_step(carry, a, b, mults, out))
+
+                if max_steps is not None and len(steps) >= max_steps:
+                    return steps
 
         # Add everything up
 
@@ -194,7 +198,7 @@ class MultiplicationDataset(DatasetBase):
         a = str(sample[0].item()).zfill(self.max_digits)
         b = str(sample[1].item()).zfill(self.max_digits)
 
-        steps = MultiplicationDataset.run_algorithm(a, b)
+        steps = MultiplicationDataset.run_algorithm(a, b, seq_idx + 1)
 
         inp_step = torch.ones((self.h, self.w), dtype=torch.long) * self.token_to_idx.index("\n")
         out_step = torch.ones((self.h, self.w), dtype=torch.long) * self.token_to_idx.index("\n")
