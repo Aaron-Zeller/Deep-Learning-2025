@@ -41,7 +41,9 @@ class Trainer:
     def _init_data(self):
         self.train_dataset: DatasetBase = instantiate(self.cfg.dataset)
         n_samples_val = int(self.cfg.dataset.n_samples * self.cfg.val_split)
-        self.val_dataset: DatasetBase = instantiate(self.cfg.dataset, n_samples=n_samples_val)
+        self.val_dataset: DatasetBase = instantiate(
+            self.cfg.dataset, n_samples=n_samples_val, seed=self.cfg.dataset.seed + 1
+        )
 
         logger.info(f"Dataset split: Train ({len(self.train_dataset)}), Val ({len(self.val_dataset)})")
 
