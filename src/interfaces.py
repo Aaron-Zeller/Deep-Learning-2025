@@ -85,6 +85,28 @@ class PositionalEncodingBase(nn.Module, metaclass=ABCMeta):
         __call__ = forward
 
 
+class RelativePositionalEncodingBase(nn.Module, metaclass=ABCMeta):
+    """Abstract class for relative positional encodings."""
+
+    def forward(self, q: Tensor, k: Tensor) -> tuple[Tensor, Tensor]:
+        """Apply relative encoding between q and k. Matrices
+
+        Args:
+            q: (b h s d) Query sequence splitted over heads.
+            k: (b h s d) Key sequence splitted over heads.
+
+        Returns:
+            Tuple of (encoded_q, encoded_k)
+
+            - encoded_q: (b h s d) relative encoded queries
+            - encoded_k: (b h s d) relative encoded keys
+        """
+        ...
+
+    if typing.TYPE_CHECKING:
+        __call__ = forward
+
+
 class AttentionBase(nn.Module, metaclass=ABCMeta):
     """Abstract class for attention mechanisms."""
 

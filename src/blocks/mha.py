@@ -1,9 +1,14 @@
+import logging
+from typing import Optional
+
 import torch
 import torch.nn as nn
 from einops import rearrange
 from torch import Tensor
 
-from src.interfaces import AttentionBase
+from src.interfaces import AttentionBase, RelativePositionalEncodingBase
+
+logger = logging.getLogger(__name__)
 
 
 class MultiHeadAttention(AttentionBase):
@@ -17,6 +22,7 @@ class MultiHeadAttention(AttentionBase):
         q_dim: int = None,
         ctx_dim: int = None,
         dropout: float = 0.0,
+        relative_pos_encoding: Optional[RelativePositionalEncodingBase] = None,
     ):
         """Initialize multi-head attention.
 
@@ -27,6 +33,7 @@ class MultiHeadAttention(AttentionBase):
             q_dim: Query dimensionality (defaults to dim).
             ctx_dim: Context dimensionality (defaults to dim).
             dropout: Dropout rate.
+            relative_pos_encoding: Relative positional encoding (defaults to None)
         """
         super().__init__()
 
@@ -44,6 +51,7 @@ class MultiHeadAttention(AttentionBase):
         self.output = torch.nn.Linear(dim, q_dim, bias=embed_bias)
 
         self.dropout = nn.Dropout(dropout)
+        self.relative_pos_encoding = relative_pos_encoding
 
     def forward(
         self,
@@ -56,6 +64,10 @@ class MultiHeadAttention(AttentionBase):
 
         # Split into 'n_heads' heads
         q, k, v = map(lambda x: rearrange(x, "b s (h d) -> b h s d", h=self.n_heads), (q, k, v))
+
+        # Apply relative positional encoding if possible
+        if self.relative_pos_encoding is not None:
+            q, k = self.relative_pos_encoding(q, k)
 
         # Compute q @ k^T / sqrt(d)
         scores = torch.einsum("b h s d, b h t d -> b h s t", q, k) * self.scale
