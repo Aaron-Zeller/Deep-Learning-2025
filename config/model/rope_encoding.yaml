@@ -5,5 +5,4 @@ defaults:
 $mha:
   relative_pos_encoding:
     _target_: src.encodings.rope.RotaryPositionalEncoding
-    dim: ${model.dim}
-    n_heads: ${model.$mha.n_heads}
+    dim: 12
