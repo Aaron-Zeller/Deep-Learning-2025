@@ -10,7 +10,7 @@ from hydra.utils import instantiate
 from lightning.fabric import Fabric, seed_everything
 from omegaconf import DictConfig, OmegaConf
 from torch import Tensor
-from torch.utils.data import Subset
+from torch.utils.data import Subset, random_split
 from torch.utils.tensorboard import SummaryWriter
 from torchinfo import summary
 from tqdm import tqdm
@@ -39,31 +39,29 @@ class Trainer:
         self.log_writer = SummaryWriter(log_dir=str(log_dir))
 
     def _init_data(self):
-        self.train_dataset: DatasetBase = instantiate(self.cfg.dataset)
-        n_samples_val = int(self.cfg.dataset.n_samples * self.cfg.val_split)
-        self.val_dataset: DatasetBase = instantiate(
-            self.cfg.dataset, n_samples=n_samples_val, seed=self.cfg.dataset.seed + 1
-        )
+        self.dataset: DatasetBase = instantiate(self.cfg.dataset)
 
-        logger.info(f"Dataset split: Train ({len(self.train_dataset)}), Val ({len(self.val_dataset)})")
+        split_rng = torch.Generator()
+        split_rng.manual_seed(self.cfg.runtime.seed)
+        val_size = int(len(self.dataset) * self.cfg.val_split)
+        train_size = len(self.dataset) - val_size
+        train_dataset, val_dataset = random_split(self.dataset, [train_size, val_size], generator=split_rng)
+        logger.info(f"Dataset split: Train ({train_size}), Val ({val_size})")
 
-        subset_rng = torch.Generator()
-        subset_rng.manual_seed(self.cfg.runtime.seed)
         train_log_dataset = Subset(
-            self.train_dataset,
-            torch.randperm(len(self.train_dataset), generator=subset_rng)[: self.cfg.logging.n_log_samples],
+            train_dataset, torch.randperm(train_size, generator=split_rng)[: self.cfg.logging.n_log_samples]
         )
 
-        self.train_dataloader = build_data_loader(self.train_dataset, self.cfg, train=True)
+        self.train_dataloader = build_data_loader(train_dataset, self.cfg, train=True)
         self.train_log_dataloader = build_data_loader(train_log_dataset, self.cfg, train=False)
-        self.val_dataloader = build_data_loader(self.val_dataset, self.cfg, train=False)
+        self.val_dataloader = build_data_loader(val_dataset, self.cfg, train=False)
 
     def _init_model(self):
         model_cfg = OmegaConf.to_container(self.cfg.model, resolve=True)
         drop_helpers(model_cfg)
 
-        self.model: TransformerBase = instantiate(model_cfg, dataset=self.train_dataset)
-        self.head: TransformerHeadBase = instantiate(self.cfg.head, transformer=self.model, dataset=self.train_dataset)
+        self.model: TransformerBase = instantiate(model_cfg, dataset=self.dataset)
+        self.head: TransformerHeadBase = instantiate(self.cfg.head, transformer=self.model, dataset=self.dataset)
 
         self.log_model()
 
@@ -164,11 +162,11 @@ class Trainer:
             return loss, accuracy, y_pred, enc_out, dec_out, enc_attns, dec_self_attns, dec_cross_attns
 
     def solve(self, epoch: int):
-        sample = self.fabric.to_device(self.val_dataset.get_example())
+        sample = self.fabric.to_device(self.dataset.get_example())
         x_in = sample[0:1, ...]
 
-        gt_steps = [self.val_dataset.to_string(sample[i]).split("\n") for i in range(sample.shape[0])]
-        steps: list[list[str]] = [self.val_dataset.to_string(x_in[0]).split("\n")]
+        gt_steps = [self.dataset.to_string(sample[i]).split("\n") for i in range(sample.shape[0])]
+        steps: list[list[str]] = [self.dataset.to_string(x_in[0]).split("\n")]
 
         for i in range(len(gt_steps) - 1):
             with torch.no_grad():
@@ -176,7 +174,7 @@ class Trainer:
                 out = self.head.step(x_in, y_pred)
 
             x_in = out
-            steps.append(self.val_dataset.to_string(x_in[0]).split("\n"))
+            steps.append(self.dataset.to_string(x_in[0]).split("\n"))
 
         gt_str = "\n".join("   ".join(gt_steps[i][j] for i in range(len(gt_steps))) for j in range(len(gt_steps[0])))
         pred_str = "\n".join("   ".join(steps[i][j] for i in range(len(steps))) for j in range(len(steps[0])))
@@ -211,13 +209,13 @@ class Trainer:
             if i < self.cfg.logging.n_log_samples:
                 x_in, x_out = batch[0][0], batch[1][0]
 
-                x_in_str = self.val_dataset.to_string(x_in)
-                x_out_str = self.val_dataset.to_string(x_out)
+                x_in_str = self.dataset.to_string(x_in)
+                x_out_str = self.dataset.to_string(x_out)
 
                 with torch.no_grad():
                     out = self.head.step(x_in[None, ...], y_pred[0:1, ...])
 
-                out_str = self.val_dataset.to_string(out[0])
+                out_str = self.dataset.to_string(out[0])
 
                 log_str = ""
                 for line_in, gt_line_out, line_out in zip(
