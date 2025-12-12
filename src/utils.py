@@ -1,3 +1,7 @@
+from contextvars import ContextVar
+from contextlib import contextmanager
+from typing import Optional, Any
+
 from omegaconf import DictConfig
 from torch.utils.data import DataLoader, Dataset
 
@@ -23,3 +27,23 @@ def build_data_loader(dataset: Dataset, cfg: DictConfig, train: bool = False) ->
         num_workers=cfg.runtime.n_workers,
         pin_memory=cfg.runtime.pin_memory,
     )
+
+
+# Context variable to pass metadata down to all submodules
+_forward_metadata: ContextVar[Optional[dict]] = ContextVar("forward_metadata", default=None)
+
+
+@contextmanager
+def forward_context(**metadata):
+    """Context manager to set metadata accessible anywhere in the call stack."""
+    token = _forward_metadata.set(metadata)
+    try:
+        yield
+    finally:
+        _forward_metadata.reset(token)
+
+
+def get_forward_metadata(key: str, default: Any = None) -> Any:
+    """Retrieve metadata from the current context."""
+    metadata = _forward_metadata.get()
+    return metadata.get(key, default) if metadata else default
