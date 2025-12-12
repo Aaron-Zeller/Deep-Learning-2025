@@ -26,7 +26,7 @@ class AdditionDataset(DatasetBase):
         self.seq_len = 2 * (max_digits + 1)
         self.seed = seed
         self.data = self._generate_data()
-        self.token_to_idx = list("0123456789+ -_\n")
+        self.token_to_idx = list("0123456789+ -_*\n")
 
         logger.info(
             f"Initialized AdditionDataset with {n_samples} samples and {max_digits} digits => {len(self)} individual steps."
@@ -87,8 +87,7 @@ class AdditionDataset(DatasetBase):
             out += "\n"
         return out
 
-    @staticmethod
-    def run_algorithm(a: str, b: str) -> list[str]:
+    def run_algorithm(self, a: str, b: str) -> list[str]:
         """Run addition algorithm step by step.
 
         Args:
@@ -132,6 +131,15 @@ class AdditionDataset(DatasetBase):
         out[-1] = carry[-1]
         steps.append(make_step(carry, a, b, out))
 
+        for i, step in enumerate(steps):
+            lines = step.splitlines()
+            pad = self.h - len(lines)
+            lines += [""] * pad
+            for j, line in enumerate(lines):
+                pad = self.w - len(line)
+                lines[j] = line + " " * pad
+            steps[i] = "\n".join(lines)
+
         return steps
 
     def __getitem__(self, idx: int) -> tuple[Tensor, Tensor]:
@@ -166,7 +174,7 @@ class AdditionDataset(DatasetBase):
         a = str(sample[0].item()).zfill(self.max_digits)
         b = str(sample[1].item()).zfill(self.max_digits)
 
-        steps = AdditionDataset.run_algorithm(a, b)
+        steps = self.run_algorithm(a, b)
 
         inp_step = torch.ones((self.h, self.w), dtype=torch.long) * self.token_to_idx.index("\n")
         out_step = torch.ones((self.h, self.w), dtype=torch.long) * self.token_to_idx.index("\n")

@@ -3,14 +3,14 @@ defaults:
   - runtime: default
   - logging: default
   - optim: adam
-  - dataset: addition
-  - model: encoder_only_small
+  - dataset: multidataset
+  - model: rope_encoding
   - head: global_action_distribution
 
-name: exp
+name: multi
 val_split: 0.1
 batch_size: 64
-n_epochs: 50
+n_epochs: 20
 resume: false
 resume_ckpt: null
 

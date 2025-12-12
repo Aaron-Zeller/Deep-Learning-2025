@@ -26,7 +26,7 @@ class SubtractionDataset(DatasetBase):
         self.seq_len = 2 * (max_digits + 1)
         self.seed = seed
         self.data = self._generate_data()
-        self.token_to_idx = list("0123456789- _\n")
+        self.token_to_idx = list("0123456789+ -_*\n")
 
         logger.info(
             f"Initialized SubtractionDataset with {n_samples} samples and {max_digits} digits => {len(self)} individual steps."

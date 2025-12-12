@@ -236,9 +236,13 @@ class Trainer:
         self.log_writer.add_scalar("val/accuracy", avg_accuracy, epoch)
         logger.info(f"Epoch {epoch}: Val Accuracy: {100*avg_accuracy:.2f}%")
 
-    def train_epoch(self, epoch: int):
+    def train_epoch(self, epoch: int, global_step: int):
         self.model.train()
         self.head.train()
+
+        if hasattr(self.train_dataloader.dataset, "set_epoch"):  # Multidataset loader
+            self.train_dataloader.dataset.set_epoch(epoch)
+            self.val_dataloader.dataset.set_epoch(epoch)
 
         it = tqdm(self.train_dataloader, unit="batch", desc=f"Epoch {epoch}/{self.cfg.n_epochs}")
         for i, batch in enumerate(it):
@@ -249,7 +253,7 @@ class Trainer:
             self.fabric.backward(loss)
             self.optim.step()
 
-            step = (epoch - 1) * len(self.train_dataloader) + i
+            step = global_step  # (epoch - 1) * len(self.train_dataloader) + i
             self.log_writer.add_scalar("train/loss", loss.item(), step)
             self.log_writer.add_scalar("train/accuracy", accuracy.item(), step)
 
@@ -260,14 +264,16 @@ class Trainer:
 
             if step % self.cfg.logging.param_hist_every_n_steps == 0:
                 self.log_param_histograms(step)
+            global_step += 1
+        return global_step
 
     def run(self):
         if self.start_epoch == 1:
             self.save_epoch(0)  # Initial checkpoint before training
             self.val_epoch(0)  # Initial validation before training
-
+        global_step = 0
         for epoch in range(self.start_epoch, self.cfg.n_epochs + 1):  # Indexing starts at 1
-            self.train_epoch(epoch)
+            global_step = self.train_epoch(epoch, global_step)
 
             if epoch % self.cfg.logging.save_every_n_epochs == 0 or epoch == self.cfg.n_epochs:
                 self.save_epoch(epoch)

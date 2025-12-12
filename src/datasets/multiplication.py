@@ -28,7 +28,7 @@ class MultiplicationDataset(DatasetBase):
         self.seq_len = get_seq_len(max_digits)
         self.seed = seed
         self.data = self._generate_data()
-        self.token_to_idx = list("0123456789* -_\n")
+        self.token_to_idx = list("0123456789+ -_*\n")
 
         logger.info(
             f"Initialized MultiplicationDataset with {n_samples} samples and {max_digits} digits => {len(self)} individual steps."
