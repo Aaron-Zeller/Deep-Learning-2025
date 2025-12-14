@@ -95,15 +95,17 @@ class Transformer(TransformerBase):
         src_mask: Optional[Tensor] = None,
         tgt_mask: Optional[Tensor] = None,
         memory_mask: Optional[Tensor] = None,
-    ) -> tuple[Optional[Tensor], Optional[Tensor], Optional[Tensor], Optional[Tensor], Optional[Tensor]]:
+    ) -> tuple[
+        Optional[Tensor], Optional[Tensor], Optional[Tensor], Optional[Tensor], Optional[Tensor], Optional[dict]
+    ]:
         # Apply encoder-decoder
         memory, enc_attns = self.encoder(src, mask=src_mask)
 
         if self.decoder is None:  # Encoder-Only, todo: Decoder-Only
-            return memory, None, enc_attns, None, None
+            return memory, None, enc_attns, None, None, {}
 
         tgt_dec, dec_self_attns, dec_cross_attns = self.decoder(
             tgt=tgt, memory=memory, tgt_mask=tgt_mask, memory_mask=memory_mask
         )
 
-        return memory, tgt_dec, enc_attns, dec_self_attns, dec_cross_attns
+        return memory, tgt_dec, enc_attns, dec_self_attns, dec_cross_attns, {}
