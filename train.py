@@ -20,13 +20,18 @@ from src.utils import build_data_loader, drop_helpers, forward_context
 
 logger = logging.getLogger(__name__)
 
+OmegaConf.register_new_resolver("eval", eval)
+
 
 class Trainer:
-    def __init__(self, cfg: DictConfig, output_dir: Path):
+    def __init__(self, cfg: DictConfig, output_dir: Path, disable_logging: bool = False):
         self.cfg = cfg
         self.output_dir = output_dir
 
-        self._init_logging()
+        self.log_writer = None
+        if not disable_logging:
+            self._init_logging()
+
         self._init_data()
         self._init_model()
         self._init_optim()
@@ -109,8 +114,9 @@ class Trainer:
         logger.info("Model Summary:\n" + str(model_summary))
         logger.info("Head Summary:\n" + str(head_summary))
 
-        self.log_writer.add_text("model_summary", f"```{model_summary}```")
-        self.log_writer.add_text("head_summary", f"```{head_summary}```")
+        if self.log_writer:
+            self.log_writer.add_text("model_summary", f"```{model_summary}```")
+            self.log_writer.add_text("head_summary", f"```{head_summary}```")
 
     def save_epoch(self, epoch: int):
         epoch_str = str(epoch).zfill(int(math.log10(self.cfg.n_epochs)) + 1)
@@ -124,6 +130,9 @@ class Trainer:
 
         params = [*self.model.named_parameters(), *self.head.named_parameters()]
         for name, param in params:
+            if param.numel() == 0:
+                continue
+
             w = param.detach()
             total_param_norm += (w**2).sum().item()
             n_param_norm += w.numel()
@@ -143,16 +152,22 @@ class Trainer:
         self.log_writer.add_scalar("train/avg_param_norm", avg_param_norm, step)
         self.log_writer.add_scalar("train/avg_grad_norm", avg_grad_norm, step)
 
-    def forward(
-        self, batch: tuple[Tensor, Optional[Tensor]]
-    ) -> tuple[
-        Tensor, Tensor, Tensor, Optional[Tensor], Optional[Tensor], Optional[Tensor], Optional[Tensor], Optional[Tensor]
+    def forward(self, batch: tuple[Tensor, Optional[Tensor]]) -> tuple[
+        Tensor,
+        Tensor,
+        Tensor,
+        Optional[Tensor],
+        Optional[Tensor],
+        Optional[Tensor],
+        Optional[Tensor],
+        Optional[Tensor],
+        Optional[dict],
     ]:
         with forward_context(orig_shape=batch[0].shape):
             x_in, x_out = batch
 
             src, tgt = self.model.prepare_tokens(x_in, x_in, self.head)  # todo: check if this makes sense
-            enc_out, dec_out, enc_attns, dec_self_attns, dec_cross_attns = self.model(src, tgt)
+            enc_out, dec_out, enc_attns, dec_self_attns, dec_cross_attns, extra = self.model(src, tgt)
 
             y_pred = self.head(dec_out if dec_out is not None else enc_out)
 
@@ -161,7 +176,7 @@ class Trainer:
             else:
                 loss = accuracy = self.fabric.to_device(torch.tensor(0.0))
 
-            return loss, accuracy, y_pred, enc_out, dec_out, enc_attns, dec_self_attns, dec_cross_attns
+            return loss, accuracy, y_pred, enc_out, dec_out, enc_attns, dec_self_attns, dec_cross_attns, extra
 
     def solve(self, epoch: int):
         sample = self.fabric.to_device(self.val_dataset.get_example())
@@ -172,7 +187,7 @@ class Trainer:
 
         for i in range(len(gt_steps) - 1):
             with torch.no_grad():
-                _, _, y_pred, _, _, _, _, _ = self.forward((x_in, None))
+                _, _, y_pred, _, _, _, _, _, _ = self.forward((x_in, None))
                 out = self.head.step(x_in, y_pred)
 
             x_in = out
@@ -185,12 +200,13 @@ class Trainer:
         print("=== Prediction ===")
         print(pred_str)
 
-        if epoch == 0:
-            self.log_writer.add_text("full_example/gt", f"```\n{gt_str}```", epoch)
+        if self.log_writer:
+            if epoch == 0:
+                self.log_writer.add_text("full_example/gt", f"```\n{gt_str}```", epoch)
 
-        self.log_writer.add_text("full_example/pred", f"```\n{pred_str}```", epoch)
+            self.log_writer.add_text("full_example/pred", f"```\n{pred_str}```", epoch)
 
-    def val_epoch(self, epoch: int):
+    def val_epoch(self, epoch: int) -> tuple[float, float]:
         self.model.eval()
         self.head.eval()
 
@@ -203,7 +219,7 @@ class Trainer:
             batch: tuple[Tensor, Tensor]
 
             with torch.no_grad():
-                loss, accuracy, y_pred, _, _, _, _, _ = self.forward(batch)  # todo: log outputs
+                loss, accuracy, y_pred, _, _, _, _, _, _ = self.forward(batch)  # todo: log outputs
 
             total_loss += loss.item()
             total_accuracy += accuracy.item()
@@ -225,16 +241,20 @@ class Trainer:
                 ):
                     log_str += f"{line_in}    -->    {gt_line_out}    |    {line_out}\n"
 
-                self.log_writer.add_text(f"val/sample_{i}", f"```\n{log_str}```", epoch)
+                if self.log_writer:
+                    self.log_writer.add_text(f"val/sample_{i}", f"```\n{log_str}```", epoch)
 
         avg_loss = total_loss / len(self.val_dataloader)
         avg_accuracy = total_accuracy / len(self.val_dataloader)
 
-        self.log_writer.add_scalar("val/loss", avg_loss, epoch)
         logger.info(f"Epoch {epoch}: Val Loss: {avg_loss:.6f}")
-
-        self.log_writer.add_scalar("val/accuracy", avg_accuracy, epoch)
         logger.info(f"Epoch {epoch}: Val Accuracy: {100*avg_accuracy:.2f}%")
+
+        if self.log_writer:
+            self.log_writer.add_scalar("val/loss", avg_loss, epoch)
+            self.log_writer.add_scalar("val/accuracy", avg_accuracy, epoch)
+
+        return avg_loss, avg_accuracy
 
     def train_epoch(self, epoch: int):
         self.model.train()

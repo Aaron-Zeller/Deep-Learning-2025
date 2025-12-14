@@ -380,7 +380,9 @@ class TransformerBase(nn.Module, metaclass=ABCMeta):
         src_mask: Optional[Tensor] = None,
         tgt_mask: Optional[Tensor] = None,
         memory_mask: Optional[Tensor] = None,
-    ) -> tuple[Optional[Tensor], Optional[Tensor], Optional[Tensor], Optional[Tensor], Optional[Tensor]]:
+    ) -> tuple[
+        Optional[Tensor], Optional[Tensor], Optional[Tensor], Optional[Tensor], Optional[Tensor], Optional[dict]
+    ]:
         """Apply vanilla transformer.
 
         Args:
@@ -398,6 +400,7 @@ class TransformerBase(nn.Module, metaclass=ABCMeta):
             - encoder_attns: (num_layers, b, h, s, s) Encoder attention weights per layer.
             - decoder_self_attns: (num_layers, b, h, t, t) Decoder self-attention weights per layer.
             - decoder_cross_attns: (num_layers, b, h, t, s) Decoder cross-attention weights per layer.
+            - extra_outputs: Optional dictionary for any extra outputs.
         """
         ...
 
