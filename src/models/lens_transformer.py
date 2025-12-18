@@ -4,7 +4,7 @@ from typing import Optional, Literal
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from einops import rearrange
+from einops import rearrange, repeat
 from torch import Tensor
 
 from src.interfaces import (
@@ -28,6 +28,7 @@ class LensTransformer(TransformerBase):
         dim: int,
         n_locations: int,
         mask_type: Literal["none", "hard", "soft"] = "hard",
+        n_action_tokens: int = 0,
     ):
         """Initialize transformer.
 
@@ -37,8 +38,8 @@ class LensTransformer(TransformerBase):
             dataset: Dataset instance.
             dim: Model dimensionality.
             n_locations: Number locations that are looked at, at any given moment.
-            window_size: Size of the window to look at around each location. A value of 1 means a 3x3 window.
             mask_type: Type of masking to use. One of "none", "hard", or "soft".
+            n_action_tokens: Number of action tokens.
         """
         super().__init__()
 
@@ -61,6 +62,9 @@ class LensTransformer(TransformerBase):
         self.n_locations = n_locations
         self.mask_type = mask_type
 
+        self.n_action_tokens = n_action_tokens
+        self.action_tokens = nn.Parameter(torch.randn(1, n_action_tokens, dim)) if n_action_tokens > 0 else None
+
     def dim(self) -> int:
         """Get model dimensionality.
 
@@ -79,8 +83,8 @@ class LensTransformer(TransformerBase):
         src_emb = self.src_embed(src)
         tgt_emb = self.tgt_embed(tgt)
 
-        # todo: figure out how to deal with the head, should probably be done in the forward pass
-        # src_enc, tgt_enc = head.inject(src_enc, tgt_enc, self.pos_encoding, src_orig_size, tgt_orig_size)
+        # (b, h, w, d) -> (b, s+n_action_tokens+n_registers, d)
+        # src_enc, tgt_enc = head.inject(src_emb, tgt_emb, None, src.shape, tgt.shape)
 
         # No positional encoding needed, since that's taken care of by the lens CNN module
 
@@ -115,6 +119,12 @@ class LensTransformer(TransformerBase):
 
         # Mask out all non-maximal tokens
         src_selected = src_lens[..., 1:] * mask
+
+        # Add the action tokens if any
+        if self.action_tokens is not None:
+            b = src_selected.shape[0]
+            action_tokens = repeat(self.action_tokens, "1 n d -> b n d", b=b)
+            src_selected = torch.cat([action_tokens, src_selected], dim=1)
 
         memory, enc_attns = self.encoder(src_selected, mask=src_mask)
 

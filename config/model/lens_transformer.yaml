@@ -1,5 +1,5 @@
 defaults:
-  - /blocks/lens_3_1@lens
+  - /blocks/lens_7_5_3_1@lens
   - _self_
 
 _target_: src.models.lens_transformer.LensTransformer

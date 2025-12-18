@@ -246,7 +246,11 @@ class Trainer:
                 x_out_str = val_dataset.to_string(x_out)
 
                 with torch.no_grad():
-                    out = self.head.step(x_in[None, ...], y_pred[0:1, ...])
+                    if type(y_pred) is tuple:
+                        y_pred_mapped = tuple(y_p[0:1, ...] for y_p in y_pred)
+                        out = self.head.step(x_in[None, ...], y_pred_mapped)
+                    else:
+                        out = self.head.step(x_in[None, ...], y_pred[0:1, ...])
 
                 out_str = val_dataset.to_string(out[0])
 

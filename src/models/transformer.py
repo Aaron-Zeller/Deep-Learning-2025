@@ -1,9 +1,11 @@
 import logging
 from typing import Optional
 
+import torch
 import torch.nn as nn
 from einops import rearrange
 from torch import Tensor
+from einops import rearrange, repeat
 
 from src.interfaces import (
     DatasetBase,
@@ -27,6 +29,7 @@ class Transformer(TransformerBase):
         decoder: Optional[TransformerDecoderBase],
         dataset: DatasetBase,
         dim: int,
+        n_action_tokens: int = 0,
     ):
         """Initialize transformer.
 
@@ -54,6 +57,9 @@ class Transformer(TransformerBase):
             logger.info("Transformer is Encoder-Decoder.")
 
         self._dim = dim
+
+        self.n_action_tokens = n_action_tokens
+        self.action_tokens = nn.Parameter(torch.randn(1, n_action_tokens, dim)) if n_action_tokens > 0 else None
 
     def dim(self) -> int:
         """Get model dimensionality.
@@ -84,7 +90,7 @@ class Transformer(TransformerBase):
         src_enc = self.pos_encoding(src_emb, src_orig_size)
         tgt_enc = self.pos_encoding(tgt_emb, tgt_orig_size)
 
-        src_enc, tgt_enc = head.inject(src_enc, tgt_enc, self.pos_encoding, src_orig_size, tgt_orig_size)
+        # src_enc, tgt_enc = head.inject(src_enc, tgt_enc, self.pos_encoding, src_orig_size, tgt_orig_size)
 
         return src_enc, tgt_enc
 
@@ -98,6 +104,12 @@ class Transformer(TransformerBase):
     ) -> tuple[
         Optional[Tensor], Optional[Tensor], Optional[Tensor], Optional[Tensor], Optional[Tensor], Optional[dict]
     ]:
+        # Add the action tokens if any
+        if self.action_tokens is not None:
+            b = src.shape[0]
+            action_tokens = repeat(self.action_tokens, "1 n d -> b n d", b=b)
+            src = torch.cat([action_tokens, src], dim=1)
+
         # Apply encoder-decoder
         memory, enc_attns = self.encoder(src, mask=src_mask)
 
