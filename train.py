@@ -52,7 +52,7 @@ class Trainer:
         self.val_datasets: dict[int, DatasetBase] = {}
         self.val_dataloaders: dict[int, DataLoader] = {}
 
-        for n_digits in range(3, 11):  # todo: make this configurable
+        for n_digits in range(self.cfg.val_min_digits, self.cfg.val_max_digits + 1):
             self.val_datasets[n_digits] = instantiate(
                 self.cfg.dataset, max_digits=n_digits, n_samples=n_samples_val, seed=self.cfg.dataset.seed + 1
             )
