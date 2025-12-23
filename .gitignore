@@ -222,4 +222,4 @@ __marimo__/
 
 # Hydra Outputs
 outputs/
-outputs_old/
+outputs_*/
