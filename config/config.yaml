@@ -13,6 +13,7 @@ batch_size: 64
 n_epochs: 50
 resume: false
 resume_ckpt: null
+proj_grad: false
 
 hydra:
   run:
