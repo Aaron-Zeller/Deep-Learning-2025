@@ -10,7 +10,7 @@ from hydra.utils import instantiate
 from lightning.fabric import Fabric, seed_everything
 from omegaconf import DictConfig, OmegaConf
 from torch import Tensor
-from torch.utils.data import Subset
+from torch.utils.data import Subset, DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from torchinfo import summary
 from tqdm import tqdm
@@ -38,6 +38,8 @@ class Trainer:
         self._init_fabric()
         self._init_checkpoints()
 
+        logger.info(f"Gradient Projection: {'Enabled' if self.cfg.proj_grad else 'Disabled'}")
+
     def _init_logging(self):
         log_dir = self.output_dir / "logs"
         log_dir.mkdir(exist_ok=True)
@@ -46,9 +48,18 @@ class Trainer:
     def _init_data(self):
         self.train_dataset: DatasetBase = instantiate(self.cfg.dataset)
         n_samples_val = int(self.cfg.dataset.n_samples * self.cfg.val_split)
-        self.val_dataset: DatasetBase = instantiate(
-            self.cfg.dataset, n_samples=n_samples_val, seed=self.cfg.dataset.seed + 1
-        )
+
+        self.val_datasets: dict[int, DatasetBase] = {}
+        self.val_dataloaders: dict[int, DataLoader] = {}
+
+        for n_digits in range(3, 11):  # todo: make this configurable
+            self.val_datasets[n_digits] = instantiate(
+                self.cfg.dataset, max_digits=n_digits, n_samples=n_samples_val, seed=self.cfg.dataset.seed + 1
+            )
+
+            self.val_dataloaders[n_digits] = build_data_loader(self.val_datasets[n_digits], self.cfg, train=False)
+
+        self.val_dataset = self.val_datasets[self.cfg.dataset.max_digits]
 
         logger.info(f"Dataset split: Train ({len(self.train_dataset)}), Val ({len(self.val_dataset)})")
 
@@ -61,7 +72,6 @@ class Trainer:
 
         self.train_dataloader = build_data_loader(self.train_dataset, self.cfg, train=True)
         self.train_log_dataloader = build_data_loader(train_log_dataset, self.cfg, train=False)
-        self.val_dataloader = build_data_loader(self.val_dataset, self.cfg, train=False)
 
     def _init_model(self):
         model_cfg = OmegaConf.to_container(self.cfg.model, resolve=True)
@@ -81,9 +91,12 @@ class Trainer:
         self.model, self.optim = self.fabric.setup(self.model, self.optim)
         self.head = self.fabric.setup(self.head)
 
-        self.train_dataloader, self.train_log_dataloader, self.val_dataloader = self.fabric.setup_dataloaders(
-            self.train_dataloader, self.train_log_dataloader, self.val_dataloader
+        self.train_dataloader, self.train_log_dataloader = self.fabric.setup_dataloaders(
+            self.train_dataloader, self.train_log_dataloader
         )
+
+        for k in self.val_dataloaders.keys():
+            self.val_dataloaders[k] = self.fabric.setup_dataloaders(self.val_dataloaders[k])
 
     def _init_checkpoints(self):
         self.ckpt_dir = self.output_dir / "checkpoints"
@@ -178,12 +191,12 @@ class Trainer:
 
             return loss, accuracy, y_pred, enc_out, dec_out, enc_attns, dec_self_attns, dec_cross_attns, extra
 
-    def solve(self, epoch: int):
-        sample = self.fabric.to_device(self.val_dataset.get_example())
+    def solve(self, dataset: DatasetBase, epoch: int):
+        sample = self.fabric.to_device(dataset.get_example())
         x_in = sample[0:1, ...]
 
-        gt_steps = [self.val_dataset.to_string(sample[i]).split("\n") for i in range(sample.shape[0])]
-        steps: list[list[str]] = [self.val_dataset.to_string(x_in[0]).split("\n")]
+        gt_steps = [dataset.to_string(sample[i]).split("\n") for i in range(sample.shape[0])]
+        steps: list[list[str]] = [dataset.to_string(x_in[0]).split("\n")]
 
         for i in range(len(gt_steps) - 1):
             with torch.no_grad():
@@ -191,7 +204,7 @@ class Trainer:
                 out = self.head.step(x_in, y_pred)
 
             x_in = out
-            steps.append(self.val_dataset.to_string(x_in[0]).split("\n"))
+            steps.append(dataset.to_string(x_in[0]).split("\n"))
 
         gt_str = "\n".join("   ".join(gt_steps[i][j] for i in range(len(gt_steps))) for j in range(len(gt_steps[0])))
         pred_str = "\n".join("   ".join(steps[i][j] for i in range(len(steps))) for j in range(len(steps[0])))
@@ -206,15 +219,17 @@ class Trainer:
 
             self.log_writer.add_text("full_example/pred", f"```\n{pred_str}```", epoch)
 
-    def val_epoch(self, epoch: int) -> tuple[float, float]:
+    def val_k_epoch(self, k: int, epoch: int) -> tuple[float, float]:
         self.model.eval()
         self.head.eval()
 
-        self.solve(epoch)
+        val_dataset = self.val_datasets[k]
+        val_dataloader = self.val_dataloaders[k]
+        self.solve(val_dataset, epoch)
 
         total_loss = 0.0
         total_accuracy = 0.0
-        it = tqdm(self.val_dataloader, unit="batch", desc=f"Val Epoch {epoch}/{self.cfg.n_epochs}")
+        it = tqdm(val_dataloader, unit="batch", desc=f"[{k}] Val Epoch {epoch}/{self.cfg.n_epochs}")
         for i, batch in enumerate(it):
             batch: tuple[Tensor, Tensor]
 
@@ -227,13 +242,13 @@ class Trainer:
             if i < self.cfg.logging.n_log_samples:
                 x_in, x_out = batch[0][0], batch[1][0]
 
-                x_in_str = self.val_dataset.to_string(x_in)
-                x_out_str = self.val_dataset.to_string(x_out)
+                x_in_str = val_dataset.to_string(x_in)
+                x_out_str = val_dataset.to_string(x_out)
 
                 with torch.no_grad():
                     out = self.head.step(x_in[None, ...], y_pred[0:1, ...])
 
-                out_str = self.val_dataset.to_string(out[0])
+                out_str = val_dataset.to_string(out[0])
 
                 log_str = ""
                 for line_in, gt_line_out, line_out in zip(
@@ -242,31 +257,93 @@ class Trainer:
                     log_str += f"{line_in}    -->    {gt_line_out}    |    {line_out}\n"
 
                 if self.log_writer:
-                    self.log_writer.add_text(f"val/sample_{i}", f"```\n{log_str}```", epoch)
+                    self.log_writer.add_text(f"val/{k}_sample_{i}", f"```\n{log_str}```", epoch)
 
-        avg_loss = total_loss / len(self.val_dataloader)
-        avg_accuracy = total_accuracy / len(self.val_dataloader)
+        avg_loss = total_loss / len(val_dataloader)
+        avg_accuracy = total_accuracy / len(val_dataloader)
 
-        logger.info(f"Epoch {epoch}: Val Loss: {avg_loss:.6f}")
-        logger.info(f"Epoch {epoch}: Val Accuracy: {100*avg_accuracy:.2f}%")
+        logger.info(f"[{k}] Epoch {epoch}: Val Loss: {avg_loss:.6f}")
+        logger.info(f"[{k}] Epoch {epoch}: Val Accuracy: {100*avg_accuracy:.2f}%")
 
         if self.log_writer:
-            self.log_writer.add_scalar("val/loss", avg_loss, epoch)
-            self.log_writer.add_scalar("val/accuracy", avg_accuracy, epoch)
+            self.log_writer.add_scalar(f"val/{k}_loss", avg_loss, epoch)
+            self.log_writer.add_scalar(f"val/{k}_accuracy", avg_accuracy, epoch)
 
         return avg_loss, avg_accuracy
+
+    def val_epoch(self, epoch: int) -> tuple[float, float]:
+        self.model.eval()
+        self.head.eval()
+
+        out = None
+
+        for k in self.val_dataloaders.keys():
+            k_out = self.val_k_epoch(k, epoch)
+
+            if k == self.cfg.dataset.max_digits:
+                out = k_out
+
+        return out
+
+    def extract_gradients(self) -> list[Tensor]:
+        grads = []
+        params = [*self.model.parameters(), *self.head.parameters()]
+        for param in params:
+            if param.grad is not None:
+                grads.append(param.grad.detach().clone())
+            else:
+                grads.append(None)
+        return grads
+
+    def project_grads(self, train_grads: list[Tensor], val_grads: list[Tensor]):
+        params = [*self.model.parameters(), *self.head.parameters()]
+        for i, param in enumerate(params):
+            g_train = train_grads[i]
+            g_val = val_grads[i]
+            if g_train is not None and g_val is not None:
+                val_normsq = torch.sum(g_val * g_val)
+                dot_product = torch.sum(g_train * g_val) / (val_normsq + 1e-16)
+                if dot_product < 0:
+                    # Remove component of the gradient that points in the opposite direction
+                    g_proj = g_train - dot_product * g_val
+                else:
+                    # Already pointing in same direction
+                    g_proj = g_train
+
+                param.grad.copy_(g_proj)
 
     def train_epoch(self, epoch: int):
         self.model.train()
         self.head.train()
 
+        val_it = iter(self.val_dataloaders[self.cfg.dataset.max_digits + 1])
+
         it = tqdm(self.train_dataloader, unit="batch", desc=f"Epoch {epoch}/{self.cfg.n_epochs}")
         for i, batch in enumerate(it):
             batch: tuple[Tensor, Tensor]
 
-            self.optim.zero_grad()
+            self.optim.zero_grad(set_to_none=False)
             loss, accuracy = self.forward(batch)[:2]
             self.fabric.backward(loss)
+
+            if self.cfg.proj_grad:
+                grad = self.extract_gradients()
+                self.optim.zero_grad(set_to_none=False)
+
+                try:
+                    val_batch = next(val_it)
+                except StopIteration:
+                    val_it = iter(self.val_dataloaders[self.cfg.dataset.max_digits + 1])
+                    val_batch = next(val_it)
+
+                val_loss, val_accuracy = self.forward(val_batch)[:2]
+                self.fabric.backward(val_loss)
+
+                val_grad = self.extract_gradients()
+                self.optim.zero_grad(set_to_none=False)
+
+                self.project_grads(grad, val_grad)
+
             self.optim.step()
 
             step = (epoch - 1) * len(self.train_dataloader) + i
