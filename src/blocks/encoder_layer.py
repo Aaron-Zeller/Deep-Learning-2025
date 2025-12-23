@@ -14,6 +14,7 @@ class EncoderLayer(TransformerEncoderLayerBase):
         mha: AttentionBase,
         ff: FeedForwardBase,
         dim: int,
+        pre_ln: bool = False,
     ):
         """Initialize encoder layer.
 
@@ -21,6 +22,7 @@ class EncoderLayer(TransformerEncoderLayerBase):
             mha: Multi-head attention module.
             ff: Feed-forward network module.
             dim: Model dimensionality.
+            pre_ln: Whether to use pre-layer normalization.
         """
         super().__init__()
 
@@ -29,11 +31,25 @@ class EncoderLayer(TransformerEncoderLayerBase):
         self.ff = ff
         self.ff_norm = nn.LayerNorm(dim)
 
-    def forward(self, src: Tensor, mask: Optional[Tensor] = None) -> tuple[Tensor, Tensor]:
-        residual, attn = self.mha(src, src, mask=mask)
-        src = self.mha_norm(src + residual)
+        self.pre_ln = pre_ln
 
-        residual = self.ff(src)
-        src = self.ff_norm(src + residual)
+    def forward(self, src: Tensor, mask: Optional[Tensor] = None) -> tuple[Tensor, Tensor]:
+
+        if self.pre_ln:
+            # Pre-layer normalization
+            src_norm = self.mha_norm(src)
+            residual, attn = self.mha(src_norm, src_norm, mask=mask)
+            src = src + residual
+
+            src_norm = self.ff_norm(src)
+            residual = self.ff(src_norm)
+            src = src + residual
+        else:
+            # Post-layer normalization
+            residual, attn = self.mha(src, src, mask=mask)
+            src = self.mha_norm(src + residual)
+
+            residual = self.ff(src)
+            src = self.ff_norm(src + residual)
 
         return src, attn

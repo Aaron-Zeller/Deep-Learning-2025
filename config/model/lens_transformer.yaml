@@ -7,7 +7,7 @@ _target_: src.models.lens_transformer.LensTransformer
 # Transformer Args
 dim: 128
 n_locations: 4
-window_size: 1
+mask_type: hard
 
 # Helper Variables
 $n_layers: 4
@@ -36,3 +36,4 @@ encoder:
     dim: ${model.dim}
     mha: ${model.$mha}
     ff: ${model.$ff}
+    pre_ln: false
