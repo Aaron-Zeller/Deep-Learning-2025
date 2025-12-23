@@ -1,5 +1,5 @@
 import logging
-from typing import Optional
+from typing import Optional, Literal
 
 import torch
 import torch.nn as nn
@@ -27,7 +27,7 @@ class LensTransformer(TransformerBase):
         dataset: DatasetBase,
         dim: int,
         n_locations: int,
-        window_size: int,
+        mask_type: Literal["none", "hard", "soft"] = "hard",
     ):
         """Initialize transformer.
 
@@ -38,6 +38,7 @@ class LensTransformer(TransformerBase):
             dim: Model dimensionality.
             n_locations: Number locations that are looked at, at any given moment.
             window_size: Size of the window to look at around each location. A value of 1 means a 3x3 window.
+            mask_type: Type of masking to use. One of "none", "hard", or "soft".
         """
         super().__init__()
 
@@ -58,6 +59,7 @@ class LensTransformer(TransformerBase):
 
         self._dim = dim
         self.n_locations = n_locations
+        self.mask_type = mask_type
 
     def dim(self) -> int:
         """Get model dimensionality.
@@ -100,8 +102,16 @@ class LensTransformer(TransformerBase):
 
         # Select n_locations with maximal values
         mask = torch.zeros_like(src_lens[..., :1])
-        for i in range(self.n_locations):
-            mask = mask + F.gumbel_softmax(src_lens[..., :1] * (1 - mask), tau=1.0, dim=1, hard=True)
+
+        if self.mask_type == "none":
+            mask = 1 - mask
+        elif self.mask_type in ["hard", "soft"]:
+            for i in range(self.n_locations):
+                mask = mask + F.gumbel_softmax(
+                    src_lens[..., :1] * (1 - mask), tau=1.0, dim=1, hard=self.mask_type == "hard"
+                )
+        else:
+            raise ValueError(f"Unknown mask type: {self.mask_type}")
 
         # Mask out all non-maximal tokens
         src_selected = src_lens[..., 1:] * mask
