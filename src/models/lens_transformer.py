@@ -22,6 +22,7 @@ class LensTransformer(TransformerBase):
 
     def __init__(
         self,
+        head: TransformerHeadBase,
         lens: nn.Module,
         encoder: TransformerEncoderBase,
         dataset: DatasetBase,
@@ -33,6 +34,7 @@ class LensTransformer(TransformerBase):
         """Initialize transformer.
 
         Args:
+            head: Transformer head module.
             lens: Lens module.
             encoder: Transformer encoder module.
             dataset: Dataset instance.
@@ -47,15 +49,7 @@ class LensTransformer(TransformerBase):
         self.src_embed = nn.Embedding(vocab_size, dim)
         self.tgt_embed = nn.Embedding(vocab_size, dim)
         self.lens = lens
-        logger.info(f"Lens: {self.lens}")
-        # todo: figure out why this is different compared to using the hydra config initialization
-        # self.lens = nn.Sequential(
-        #     nn.Conv2d(dim, dim, kernel_size=5, padding=2),
-        #     nn.GELU(),
-        #     nn.Conv2d(dim, dim, kernel_size=3, padding=1),
-        #     nn.GELU(),
-        #     nn.Conv2d(dim, dim + 1, kernel_size=1),
-        # )
+        self.head = head
         self.encoder = encoder
 
         self._dim = dim
@@ -77,16 +71,10 @@ class LensTransformer(TransformerBase):
         self,
         src: Tensor,
         tgt: Tensor,
-        head: TransformerHeadBase,
     ) -> tuple[Tensor, Tensor]:
         # Embed tokens: (b, h, w) -> (b, h, w, d)
         src_emb = self.src_embed(src)
         tgt_emb = self.tgt_embed(tgt)
-
-        # (b, h, w, d) -> (b, s+n_action_tokens+n_registers, d)
-        # src_enc, tgt_enc = head.inject(src_emb, tgt_emb, None, src.shape, tgt.shape)
-
-        # No positional encoding needed, since that's taken care of by the lens CNN module
 
         return src_emb, tgt_emb
 
@@ -103,6 +91,7 @@ class LensTransformer(TransformerBase):
         # Run lens to match local patterns and create implicit positional embedding
         src_lens = self.lens(rearrange(src, "b h w d -> b d h w"))
         src_lens = rearrange(src_lens, "b d h w -> b (h w) d")
+        tgt_lens = rearrange(tgt, "b h w d -> b (h w) d")
 
         # Select n_locations with maximal values
         mask = torch.zeros_like(src_lens[..., :1])
@@ -120,11 +109,8 @@ class LensTransformer(TransformerBase):
         # Mask out all non-maximal tokens
         src_selected = src_lens[..., 1:] * mask
 
-        # Add the action tokens if any
-        if self.action_tokens is not None:
-            b = src_selected.shape[0]
-            action_tokens = repeat(self.action_tokens, "1 n d -> b n d", b=b)
-            src_selected = torch.cat([action_tokens, src_selected], dim=1)
+        # Inject head specific tokens
+        src_selected, tgt_lens = self.head.inject(src_selected, tgt_lens, None, src.shape, tgt.shape)
 
         memory, enc_attns = self.encoder(src_selected, mask=src_mask)
 

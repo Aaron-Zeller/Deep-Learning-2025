@@ -358,14 +358,12 @@ class TransformerBase(nn.Module, metaclass=ABCMeta):
         self,
         src: Tensor,
         tgt: Tensor,
-        head: TransformerHeadBase,
     ) -> tuple[Tensor, Tensor]:
         """Prepare source and target tokens for the transformer.
 
         Args:
             src: (b, h, w) Source input.
             tgt: (b, h, w) Target input.
-            head: Transformer head instance.
         Returns:
             Tuple of (src, tgt)
             - src: (b, s, d) Prepared source sequence.

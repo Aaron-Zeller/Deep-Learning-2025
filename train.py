@@ -77,8 +77,8 @@ class Trainer:
         model_cfg = OmegaConf.to_container(self.cfg.model, resolve=True)
         drop_helpers(model_cfg)
 
-        self.model: TransformerBase = instantiate(model_cfg, dataset=self.train_dataset)
-        self.head: TransformerHeadBase = instantiate(self.cfg.head, transformer=self.model, dataset=self.train_dataset)
+        self.head: TransformerHeadBase = instantiate(self.cfg.head, dataset=self.train_dataset)
+        self.model: TransformerBase = instantiate(model_cfg, head=self.head, dataset=self.train_dataset)
 
         self.log_model()
 
@@ -179,7 +179,7 @@ class Trainer:
         with forward_context(orig_shape=batch[0].shape):
             x_in, x_out = batch
 
-            src, tgt = self.model.prepare_tokens(x_in, x_in, self.head)  # todo: check if this makes sense
+            src, tgt = self.model.prepare_tokens(x_in, x_in)  # todo: check if this makes sense
             enc_out, dec_out, enc_attns, dec_self_attns, dec_cross_attns, extra = self.model(src, tgt)
 
             y_pred = self.head(dec_out if dec_out is not None else enc_out)

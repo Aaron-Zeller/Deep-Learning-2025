@@ -24,6 +24,7 @@ class Transformer(TransformerBase):
 
     def __init__(
         self,
+        head: TransformerHeadBase,
         pos_encoding: PositionalEncodingBase,
         encoder: Optional[TransformerEncoderBase],
         decoder: Optional[TransformerDecoderBase],
@@ -34,6 +35,7 @@ class Transformer(TransformerBase):
         """Initialize transformer.
 
         Args:
+            head: Transformer head module.
             pos_encoding: Positional encoding module.
             encoder: Transformer encoder module.
             decoder: Transformer decoder module.
@@ -48,6 +50,7 @@ class Transformer(TransformerBase):
         self.pos_encoding = pos_encoding
         self.encoder = encoder
         self.decoder = decoder
+        self.head = head
 
         if encoder is not None and decoder is None:
             logger.info("Transformer is Encoder-Only.")
@@ -73,7 +76,6 @@ class Transformer(TransformerBase):
         self,
         src: Tensor,
         tgt: Tensor,
-        head: TransformerHeadBase,
     ) -> tuple[Tensor, Tensor]:
         src_orig_size = src.shape
         tgt_orig_size = tgt.shape
@@ -90,8 +92,6 @@ class Transformer(TransformerBase):
         src_enc = self.pos_encoding(src_emb, src_orig_size)
         tgt_enc = self.pos_encoding(tgt_emb, tgt_orig_size)
 
-        # src_enc, tgt_enc = head.inject(src_enc, tgt_enc, self.pos_encoding, src_orig_size, tgt_orig_size)
-
         return src_enc, tgt_enc
 
     def forward(
@@ -104,6 +104,9 @@ class Transformer(TransformerBase):
     ) -> tuple[
         Optional[Tensor], Optional[Tensor], Optional[Tensor], Optional[Tensor], Optional[Tensor], Optional[dict]
     ]:
+
+        src, tgt = self.head.inject(src, tgt, self.pos_encoding, src.shape, tgt.shape)
+
         # Add the action tokens if any
         if self.action_tokens is not None:
             b = src.shape[0]
