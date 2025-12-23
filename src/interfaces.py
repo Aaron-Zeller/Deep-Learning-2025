@@ -327,13 +327,13 @@ class TransformerHeadBase(nn.Module, metaclass=ABCMeta):
         ...
 
     @abstractmethod
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> list[Tensor]:
         """Apply transformer head.
 
         Args:
             x: (b, s, ds) Latent sequence.
         Returns:
-            (b, s, vocab_size) Head output.
+            Head specific outputs.
         """
         ...
 

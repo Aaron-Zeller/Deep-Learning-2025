@@ -70,6 +70,8 @@ class SplitActionDistributionHead(TransformerHeadBase):
         n_action_tokens: int,
         dim: int,
         dataset: DatasetBase,
+        alpha: float = 1.0,
+        beta: float = 4.0,
     ):
         """Initialize global action distribution head.
 
@@ -78,6 +80,8 @@ class SplitActionDistributionHead(TransformerHeadBase):
             n_action_tokens: Number of action tokens for value prediction.
             dim: Model dimensionality.
             dataset: Dataset instance.
+            alpha: Weight for value prediction loss.
+            beta: Weight for location prediction loss.
         """
         super().__init__()
 
@@ -87,6 +91,8 @@ class SplitActionDistributionHead(TransformerHeadBase):
         self.n_registers = n_registers
         self.vocab_size = dataset.vocab_size()
         self.dim = dim
+        self.alpha = alpha
+        self.beta = beta
 
         # Registers used as additional "memory" context
         _registers = torch.randn(self.n_registers, self.dim)
@@ -156,7 +162,7 @@ class SplitActionDistributionHead(TransformerHeadBase):
         # Losses
         v_loss = F.cross_entropy(v_pred, v_target_dist)
         loc_loss = F.cross_entropy(loc_pred, loc_target_dist)
-        loss = v_loss + 1 * loc_loss
+        loss = self.alpha * v_loss + self.beta * loc_loss
 
         # Accuracy
         pred_loc_idx = torch.argmax(loc_pred, dim=-1)  # (b,)
