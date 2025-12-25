@@ -324,9 +324,9 @@ class Trainer:
 
             self.optim.zero_grad(set_to_none=False)
             loss, accuracy = self.forward(batch)[:2]
-            self.fabric.backward(loss)
 
             if self.cfg.proj_grad:
+                self.fabric.backward(loss)
                 grad = self.extract_gradients()
                 self.optim.zero_grad(set_to_none=False)
 
@@ -343,6 +343,16 @@ class Trainer:
                 self.optim.zero_grad(set_to_none=False)
 
                 self.project_grads(grad, val_grad)
+            else:  # todo: make this configurable instead of "else"
+                self.fabric.backward(loss * 0.5)
+                try:
+                    val_batch = next(val_it)
+                except StopIteration:
+                    val_it = iter(self.val_dataloaders[self.cfg.dataset.max_digits + 1])
+                    val_batch = next(val_it)
+
+                val_loss, val_accuracy = self.forward(val_batch)[:2]
+                self.fabric.backward(val_loss * 0.5)
 
             self.optim.step()
 
