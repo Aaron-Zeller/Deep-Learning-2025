@@ -470,6 +470,11 @@ def run_multiplication(a: str, b: str):
                 accum_summand[i] = -1
                 steps.append(make_step(position, progress, update, a, b, accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result)))
 
+            # Reset the Progress Completely
+            for i in range(prod_len):
+                accum_progress[i] = "-1"
+                steps.append(make_step(position, progress, update, a, b, accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result)))
+
             # Add the First Digit - if it exists
             if dprod >= 10:
                 accum_summand[tens_idx] = dprod // 10
