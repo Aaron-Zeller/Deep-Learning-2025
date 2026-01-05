@@ -112,13 +112,17 @@ def run_subtraction(a: str, b: str) -> list[str]:
 
     Number of Steps = ________________
     """
-    max_digits = max(len(a), len(b))
-
+    len_a = len(a)
+    len_b = len(b)
+    max_digits = max(len_a, len_b)
+    deficit_a = -min(0, len_a - len_b)
+    deficit_b = -min(0, len_b - len_a)
+    
     # Static Line Utilities
-    swap_line = lambda x: "?" + " " + "".join(str(d) if d >= 0 else " " for d in x[::-1])
+    swap_line = lambda x: "?" + " " * 1 + "".join(str(d) if d >= 0 else " " for d in x[::-1])
     borrow_line = lambda x: " " * 1 + "".join(str(d) if d >= 0 else " " for d in x[::-1])
     a_line = lambda x: " " * 2 + "".join(str(d) if d >= 0 else " " for d in x[::-1])
-    b_line = lambda x: "-" + " " + "".join(str(d) if d >= 0 else " " for d in x[::-1])
+    b_line = lambda x: "-" + " " * 1 + "".join(str(d) if d >= 0 else " " for d in x[::-1])
     result_line = lambda x, _sign: "=" + ("-" if _sign else " ") +  "".join(str(d) if d >= 0 else " " for d in x[::-1])
     make_step = lambda _swap, _borrow, _a, _b, _out, _sign: "\n".join([swap_line(_swap), borrow_line(_borrow), a_line(_a), b_line(_b), result_line(_out, _sign)])
 
@@ -128,8 +132,10 @@ def run_subtraction(a: str, b: str) -> list[str]:
     result = [-1 for _ in range(max_digits)]
     a_state = []
     a_state.extend(reversed([int(d) for d in a]))
+    a_state.extend([-1 for _ in range(deficit_a)])
     b_state = []
     b_state.extend(reversed([int(d) for d in b]))
+    b_state.extend([-1 for _ in range(deficit_b)])
     sign = False
 
     # Initial Step
@@ -138,7 +144,16 @@ def run_subtraction(a: str, b: str) -> list[str]:
     # Swap Steps
     if(int(b) > int(a)):
 
-        # Set sign before to ensure that after switching setup is correct
+        # Also Swap A and B to Ensure Correct Result
+        temp = a
+        a = b
+        b = temp
+
+        # Also Change Length Variables
+        len_a = len(a)
+        len_b = len(b)
+
+        # Set Sign Before to Ensure that After Switching Setup is Correct
         sign = True
         steps.append(make_step(swap, borrow, a_state, b_state, result, sign))
 
@@ -169,7 +184,6 @@ def run_subtraction(a: str, b: str) -> list[str]:
                     # Remove from Swap Line
                     swap[i] = -1
                     steps.append(make_step(swap, borrow, a_state, b_state, result, sign))
-        
     
     # Computation Steps
     for i in range(max_digits):
@@ -177,13 +191,13 @@ def run_subtraction(a: str, b: str) -> list[str]:
         borDebt = 0 if i == 0 else borrow[i]
 
         # Determine Borrow Value
-        da = int(a[-i - 1])
-        db = int(b[-i - 1])
-
-        borLoan = 1 if (da >= db) else 0
+        da = 0 if i >= len_a else int(a[-i - 1])
+        db = 0 if i >= len_b else int(b[-i - 1])
+        borLoan = 1 if (da < db) else 0
 
         # Compute Result
-        diff = (db + borLoan * 10) - (da + borDebt)
+        diff = (da + borLoan * 10) - (db + borDebt)
+        print(diff)
 
         # Carry Step
         borrow[i + 1] = borLoan
@@ -197,7 +211,6 @@ def run_subtraction(a: str, b: str) -> list[str]:
     comp_line = lambda x: "$" + " " + "".join(str(d) if d >= 0 else " " for d in x[::-1])
     make_step_comp = lambda _swap, _borrow, _a, _b, _out, _sign: "\n".join([comp_line(_swap), borrow_line(_borrow), a_line(_a), b_line(_b), result_line(_out, _sign)])
     steps.append(make_step_comp(swap, borrow, a_state, b_state, result, sign))
-
     return steps
 
 def run_pipe(a: str, b: str, u: str, d: str) -> list[str]:
@@ -273,8 +286,8 @@ def run_accumulation(a: str, b: str, max_length: int = None):
                     12345
     1 progress   ->
     2 carry      ->
-    3 a          ->   294
-    4 b / result -> + 123
+    3 a          ->    294
+    4 b / result -> += 123
 
     1. Column Rule: Completion when corresponding result entry is filled and progress is tracked
     2. Column Steps:
@@ -447,9 +460,6 @@ def run_multiplication(a: str, b: str):
             dprod = da * db
 
             # Compute Indices
-            # tens_idx = -(prog + pos + 1)
-            # ones_idx = tens_idx - 1
-
             ones_idx = prog + pos
             tens_idx = ones_idx + 1
 
@@ -552,10 +562,32 @@ def run_multiplication(a: str, b: str):
     return steps
 
 
+def run_decrementation(a: str, b: str):
+
+    """
+    
+    PRE: It must hold that b >= a.
+
+    1 progress   ->
+    2 borrow     ->
+    3 a          ->   294
+    4 b / result -> -=
+
+    1. Column Rule: Completion when corresponding result entry is filled and progress is tracked
+    2. Column Steps:
+       - Initial Step: No carry in next column, no result (+1 only once - final state after each column)
+       - Carry Step:    Carry either 0 or 1 in next column, no result
+       - Result Step:   Carry either 0 or 1 in next column, result in result entry is computed
+       - Progress Step: Track Progress by using .
+       - Final Step:    Copy the carry down in case it is 1
+    
+    
+    """
+
+    pass
 
 
-
-steps = run_multiplication("37", "19")
+steps = run_subtraction("37", "190")
 for step in steps:
     print(step)
     print("==========")
