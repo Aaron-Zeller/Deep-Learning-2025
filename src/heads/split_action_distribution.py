@@ -73,7 +73,7 @@ class SplitActionDistributionHead(TransformerHeadBase):
         alpha: float = 1.0,
         beta: float = 4.0,
     ):
-        """Initialize global action distribution head.
+        """Initialize split action distribution head.
 
         Args:
             n_registers: Number of register tokens. This helps avoiding contamination of the data tokens.
