@@ -1,10 +1,10 @@
 defaults:
   - config
-  - blocks@model.lens: lens_7_5_3_1
+  - blocks@model.lens: lens_3_3_3_3_1
   - override model: lens_transformer
   - _self_
 
-name: lens_transformer_7_5_3_1_nomask_proj_grad
+name: lens_transformer_3_3_3_3_1_nomask_proj_grad
 n_epochs: 1000
 proj_grad: true
 mix_grad: false

@@ -44,13 +44,13 @@ class AdditionDataset(DatasetBase):
         Note: Currently doesn't handle duplicates.
 
         Returns:
-            (num_samples, 2) Pairs of numbers to add.
+            (num_samples, 2, max_digits) Digit representation of pairs of numbers to add.
+            Each element is a digit from 0-9.
         """
         rng = torch.Generator().manual_seed(self.seed)
-        a = torch.randint(0, 10**self.max_digits, (self.n_samples,), generator=rng)
-        b = torch.randint(0, 10**self.max_digits, (self.n_samples,), generator=rng)
-
-        return torch.stack([a, b], dim=-1)
+        # Generate random digits directly: shape (n_samples, 2, max_digits)
+        digits = torch.randint(0, 10, (self.n_samples, 2, self.max_digits), generator=rng)
+        return digits
 
     def __len__(self) -> int:
         """Get dataset length.
@@ -62,11 +62,22 @@ class AdditionDataset(DatasetBase):
         """
         return len(self.data) * (self.seq_len - 1)  # Can't use last step as input
 
+    def _digits_to_string(self, digits: Tensor) -> str:
+        """Convert digit array to string.
+
+        Args:
+            digits: (max_digits,) tensor of digits
+
+        Returns:
+            String representation of the number
+        """
+        return "".join(str(d.item()) for d in digits)
+
     def get_example(self) -> Tensor:
         sample = self.data[0]
 
-        a = str(sample[0].item()).zfill(self.max_digits)
-        b = str(sample[1].item()).zfill(self.max_digits)
+        a = self._digits_to_string(sample[0])
+        b = self._digits_to_string(sample[1])
 
         sample = self.run_algorithm(a, b)
 
@@ -163,8 +174,8 @@ class AdditionDataset(DatasetBase):
 
         sample = self.data[sample_idx]
 
-        a = str(sample[0].item()).zfill(self.max_digits)
-        b = str(sample[1].item()).zfill(self.max_digits)
+        a = self._digits_to_string(sample[0])
+        b = self._digits_to_string(sample[1])
 
         steps = AdditionDataset.run_algorithm(a, b)
 
