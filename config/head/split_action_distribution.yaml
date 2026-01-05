@@ -1,0 +1,5 @@
+_target_: src.heads.split_action_distribution.SplitActionDistributionHead
+
+n_registers: 1
+n_action_tokens: 4
+dim: ${model.dim}

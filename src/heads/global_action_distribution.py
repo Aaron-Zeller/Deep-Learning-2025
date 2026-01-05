@@ -13,20 +13,20 @@ class GlobalActionDistributionHead(TransformerHeadBase):
     def __init__(
         self,
         n_registers: int,
-        transformer: TransformerBase,
+        dim: int,
         dataset: DatasetBase,
     ):
         """Initialize global action distribution head.
 
         Args:
             n_registers: Number of register tokens. This helps avoiding contamination of the data tokens.
-            transformer: Transformer model.
+            dim: Model dimensionality.
             dataset: Dataset instance.
         """
         super().__init__()
 
         self.n_registers = n_registers
-        self.dim = transformer.dim()
+        self.dim = dim
         self.h, self.w = dataset.grid_size()
         self.vocab_size = dataset.vocab_size()
 

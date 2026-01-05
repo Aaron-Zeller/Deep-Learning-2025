@@ -4,7 +4,7 @@ from typing import Optional, Literal
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from einops import rearrange
+from einops import rearrange, repeat
 from torch import Tensor
 
 from src.interfaces import (
@@ -22,23 +22,26 @@ class LensTransformer(TransformerBase):
 
     def __init__(
         self,
+        head: TransformerHeadBase,
         lens: nn.Module,
         encoder: TransformerEncoderBase,
         dataset: DatasetBase,
         dim: int,
         n_locations: int,
         mask_type: Literal["none", "hard", "soft"] = "hard",
+        n_action_tokens: int = 0,
     ):
         """Initialize transformer.
 
         Args:
+            head: Transformer head module.
             lens: Lens module.
             encoder: Transformer encoder module.
             dataset: Dataset instance.
             dim: Model dimensionality.
             n_locations: Number locations that are looked at, at any given moment.
-            window_size: Size of the window to look at around each location. A value of 1 means a 3x3 window.
             mask_type: Type of masking to use. One of "none", "hard", or "soft".
+            n_action_tokens: Number of action tokens.
         """
         super().__init__()
 
@@ -46,20 +49,15 @@ class LensTransformer(TransformerBase):
         self.src_embed = nn.Embedding(vocab_size, dim)
         self.tgt_embed = nn.Embedding(vocab_size, dim)
         self.lens = lens
-        logger.info(f"Lens: {self.lens}")
-        # todo: figure out why this is different compared to using the hydra config initialization
-        # self.lens = nn.Sequential(
-        #     nn.Conv2d(dim, dim, kernel_size=5, padding=2),
-        #     nn.GELU(),
-        #     nn.Conv2d(dim, dim, kernel_size=3, padding=1),
-        #     nn.GELU(),
-        #     nn.Conv2d(dim, dim + 1, kernel_size=1),
-        # )
+        self.head = head
         self.encoder = encoder
 
         self._dim = dim
         self.n_locations = n_locations
         self.mask_type = mask_type
+
+        self.n_action_tokens = n_action_tokens
+        self.action_tokens = nn.Parameter(torch.randn(1, n_action_tokens, dim)) if n_action_tokens > 0 else None
 
     def dim(self) -> int:
         """Get model dimensionality.
@@ -73,16 +71,10 @@ class LensTransformer(TransformerBase):
         self,
         src: Tensor,
         tgt: Tensor,
-        head: TransformerHeadBase,
     ) -> tuple[Tensor, Tensor]:
         # Embed tokens: (b, h, w) -> (b, h, w, d)
         src_emb = self.src_embed(src)
         tgt_emb = self.tgt_embed(tgt)
-
-        # todo: figure out how to deal with the head, should probably be done in the forward pass
-        # src_enc, tgt_enc = head.inject(src_enc, tgt_enc, self.pos_encoding, src_orig_size, tgt_orig_size)
-
-        # No positional encoding needed, since that's taken care of by the lens CNN module
 
         return src_emb, tgt_emb
 
@@ -99,6 +91,7 @@ class LensTransformer(TransformerBase):
         # Run lens to match local patterns and create implicit positional embedding
         src_lens = self.lens(rearrange(src, "b h w d -> b d h w"))
         src_lens = rearrange(src_lens, "b d h w -> b (h w) d")
+        tgt_lens = rearrange(tgt, "b h w d -> b (h w) d")
 
         # Select n_locations with maximal values
         mask = torch.zeros_like(src_lens[..., :1])
@@ -115,6 +108,9 @@ class LensTransformer(TransformerBase):
 
         # Mask out all non-maximal tokens
         src_selected = src_lens[..., 1:] * mask
+
+        # Inject head specific tokens
+        src_selected, tgt_lens = self.head.inject(src_selected, tgt_lens, None, src.shape, tgt.shape)
 
         memory, enc_attns = self.encoder(src_selected, mask=src_mask)
 
