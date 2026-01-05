@@ -96,16 +96,16 @@ def run_subtraction(a: str, b: str) -> list[str]:
     3. Completion:  Replace ? by $ in top left position of subtraction block.
 
     ============================================ SWAPS ============================================
-
-                      4       45      456     456     456     456      56       6
+   
+    ?       ?       ? 4     ? 45    ? 456   ? 456   ? 456   ? 456   ?  56   ?   6   ?      ?
     
       456     456      56       6             8       89      892     892     892     892     892     
     - 892   - 892   - 892   - 892   - 892   -  92   -   2   -       - 4     - 45    - 456   - 456
     =       =       =       =       =       =       =       =       =       =       =       =-      
 
     ============================================ VALID ============================================
-
-               1       1      01      01     001     001    $001
+    ?       ?       ?       ?       ?      ?        ?       $
+               1       1      01      01     001     001     001
       892     892     892     892     892     892     892     892    
     - 456   - 456   - 456   - 456   - 456   - 456   - 456   - 456  
     =-      =-      =-  6   =-  6   =- 36   =- 36   =-436   =-436
@@ -197,7 +197,6 @@ def run_subtraction(a: str, b: str) -> list[str]:
 
         # Compute Result
         diff = (da + borLoan * 10) - (db + borDebt)
-        print(diff)
 
         # Carry Step
         borrow[i + 1] = borLoan
@@ -479,21 +478,17 @@ def run_multiplication(a: str, b: str):
             # Add the Second Digit
             accum_summand[ones_idx] = dprod % 10
             steps.append(make_step(position, progress, update, a, b, accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result)))
-            
-            print(accum_summand)
 
             # Add the Remaining Zeroes
             for i in range(ones_idx):
                 accum_summand[i] = 0
                 steps.append(make_step(position, progress, update, a, b, accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result)))
             
-            
-            print(accum_summand)
-            print("===============")
+        
             # Run the Accumulator
             dprod = dprod * (10**(prog + pos))
             steps_accum = run_accumulation(str(dprod), str(accumulated_result), prod_len)
-            print(dprod)
+        
             # Save the Result Internally for Easy Handling
             accumulated_result = accumulated_result + dprod
             
@@ -563,31 +558,107 @@ def run_multiplication(a: str, b: str):
 
 
 def run_decrementation(a: str, b: str):
-
     """
-    
-    PRE: It must hold that b >= a.
 
+    PRE: It must hold that b >= a. (NO SWAPPING)
+
+    1. COMPUTE
+    2. CLEAR A ROW
+    3. SHIFT B TO A ROW
+
+    Decrementation Block Steps
+                    123456
     1 progress   ->
     2 borrow     ->
-    3 a          ->   294
-    4 b / result -> -=
+    3 a          ->    456
+    4 b / result -> -= 892
 
-    1. Column Rule: Completion when corresponding result entry is filled and progress is tracked
-    2. Column Steps:
-       - Initial Step: No carry in next column, no result (+1 only once - final state after each column)
-       - Carry Step:    Carry either 0 or 1 in next column, no result
-       - Result Step:   Carry either 0 or 1 in next column, result in result entry is computed
-       - Progress Step: Track Progress by using .
-       - Final Step:    Copy the carry down in case it is 1
-    
-    
+    1. Column Rule: Completion when corresponding result entry is filled
+    2. Column Steps: (Once valid)
+       - Initial Step:  No borrow in next column, no result (+1 only once - final state after each column / or after swap)
+       - Borrow Step:   Borrow either 0 or 1 in next column, no result
+       - Result Step:   Borrow either 0 or 1 in next column, result in result entry is computed
+       - Progress Step: Track Progress in Progress Row in Current Column
+    3. Completion:  Replace ? by $ in top left position of decrementation block.
+
+    Number of Steps = ________________
     """
+    len_a = len(a)
+    len_b = len(b)
+    max_digits = max(len_a, len_b)
+    deficit_a = -min(0, len_a - len_b)
+    deficit_b = -min(0, len_b - len_a)
+    
+    # Static Line Utilities
+    progress_line = lambda x: "?" + " " * 1 + "".join(str(d) if d != "-1" else " " for d in x[::-1])
+    borrow_line = lambda x: " " * 1 + "".join(str(d) if d >= 0 else " " for d in x[::-1])
+    a_line = lambda x: " " * 2 + "".join(str(d) if d >= 0 else " " for d in x[::-1])
+    b_line = lambda x: "-=" +  "".join(str(d) if d >= 0 else " " for d in x[::-1])
+    make_step = lambda _progress, _borrow, _a, _b: "\n".join([progress_line(_progress), borrow_line(_borrow), a_line(_a), b_line(_b)])
 
-    pass
+    # Algorithm Steps
+    progress = ["-1" for _ in range(max_digits)]
+    borrow = [-1 for _ in range(max_digits + 1)]
+    a_state = []
+    a_state.extend(reversed([int(d) for d in a]))
+    a_state.extend([-1 for _ in range(deficit_a)])
+    b_state = []
+    b_state.extend(reversed([int(d) for d in b]))
+    b_state.extend([-1 for _ in range(deficit_b)])
+
+    # Initial Step
+    steps = [make_step(progress, borrow, a_state, b_state)]
+    
+    # Computation Steps
+    for i in range(max_digits):
+        # First Line has no Borrow
+        borDebt = 0 if i == 0 else borrow[i]
+
+        # Determine Borrow Value
+        da = 0 if i >= len_a else int(a[-i - 1])
+        db = 0 if i >= len_b else int(b[-i - 1])
+        borLoan = 1 if (da < db) else 0
+
+        # Compute Result
+        diff = (da + borLoan * 10) - (db + borDebt)
+
+        # Carry Step
+        borrow[i + 1] = borLoan
+        steps.append(make_step(progress, borrow, a_state, b_state))
+
+        # Result Step
+        b_state[i] = diff
+        steps.append(make_step(progress, borrow, a_state, b_state))
+
+        # Progress Step
+        progress[i] = "."
+        steps.append(make_step(progress, borrow, a_state, b_state))
 
 
-steps = run_subtraction("37", "190")
+    # Completion Step
+    comp_line = lambda x: "$" + " " + "".join(str(d) if d != "-1" else " " for d in x[::-1])
+    make_step_comp = lambda _progress, _borrow, _a, _b: "\n".join([comp_line(_progress), borrow_line(_borrow), a_line(_a), b_line(_b)])
+    steps.append(make_step_comp(progress, borrow, a_state, b_state))
+
+    # Clear Steps 
+    for i in range(max_digits):
+        a_state[i] = -1
+        steps.append(make_step_comp(progress, borrow, a_state, b_state))
+
+    # Shift Steps - Copy Digits from a to b Row
+    for i in range(max_digits):
+        a_state[i] = b_state[i]
+        steps.append(make_step_comp(progress, borrow, a_state, b_state))
+
+    # Shift Steps - Remove Digits in b Row
+    for i in range(max_digits):
+        b_state[i] = -1
+        steps.append(make_step_comp(progress, borrow, a_state, b_state))
+
+    return steps
+
+
+steps = run_multiplication("37", "19")
 for step in steps:
     print(step)
     print("==========")
