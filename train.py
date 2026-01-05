@@ -39,6 +39,7 @@ class Trainer:
         self._init_checkpoints()
 
         logger.info(f"Gradient Projection: {'Enabled' if self.cfg.proj_grad else 'Disabled'}")
+        logger.info(f"Gradient Mixing: {'Enabled' if self.cfg.mix_grad else 'Disabled'}")
 
     def _init_logging(self):
         log_dir = self.output_dir / "logs"
@@ -330,6 +331,7 @@ class Trainer:
             loss, accuracy = self.forward(batch)[:2]
 
             if self.cfg.proj_grad:
+                # Project gradients into half-space defined by validation gradient (digit + 1)
                 self.fabric.backward(loss)
                 grad = self.extract_gradients()
                 self.optim.zero_grad(set_to_none=False)
@@ -347,7 +349,8 @@ class Trainer:
                 self.optim.zero_grad(set_to_none=False)
 
                 self.project_grads(grad, val_grad)
-            else:  # todo: make this configurable instead of "else"
+            elif self.cfg.mix_grad:
+                # Mix training and validation gradients (digit + 1)
                 self.fabric.backward(loss * 0.5)
                 try:
                     val_batch = next(val_it)
@@ -357,6 +360,9 @@ class Trainer:
 
                 val_loss, val_accuracy = self.forward(val_batch)[:2]
                 self.fabric.backward(val_loss * 0.5)
+            else:
+                # Only use training gradient
+                self.fabric.backward(loss)
 
             self.optim.step()
 
