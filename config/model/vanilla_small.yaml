@@ -6,6 +6,7 @@ dim: 128
 
 # Helper Variables
 $n_layers: 4
+$dropout: 0.0
 
 $mha:
   _target_: src.blocks.mha.MultiHeadAttention
