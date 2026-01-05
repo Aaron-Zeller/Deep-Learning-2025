@@ -327,13 +327,13 @@ class TransformerHeadBase(nn.Module, metaclass=ABCMeta):
         ...
 
     @abstractmethod
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> list[Tensor]:
         """Apply transformer head.
 
         Args:
             x: (b, s, ds) Latent sequence.
         Returns:
-            (b, s, vocab_size) Head output.
+            Head specific outputs.
         """
         ...
 
@@ -358,14 +358,12 @@ class TransformerBase(nn.Module, metaclass=ABCMeta):
         self,
         src: Tensor,
         tgt: Tensor,
-        head: TransformerHeadBase,
     ) -> tuple[Tensor, Tensor]:
         """Prepare source and target tokens for the transformer.
 
         Args:
             src: (b, h, w) Source input.
             tgt: (b, h, w) Target input.
-            head: Transformer head instance.
         Returns:
             Tuple of (src, tgt)
             - src: (b, s, d) Prepared source sequence.
@@ -380,7 +378,9 @@ class TransformerBase(nn.Module, metaclass=ABCMeta):
         src_mask: Optional[Tensor] = None,
         tgt_mask: Optional[Tensor] = None,
         memory_mask: Optional[Tensor] = None,
-    ) -> tuple[Optional[Tensor], Optional[Tensor], Optional[Tensor], Optional[Tensor], Optional[Tensor]]:
+    ) -> tuple[
+        Optional[Tensor], Optional[Tensor], Optional[Tensor], Optional[Tensor], Optional[Tensor], Optional[dict]
+    ]:
         """Apply vanilla transformer.
 
         Args:
@@ -398,6 +398,7 @@ class TransformerBase(nn.Module, metaclass=ABCMeta):
             - encoder_attns: (num_layers, b, h, s, s) Encoder attention weights per layer.
             - decoder_self_attns: (num_layers, b, h, t, t) Decoder self-attention weights per layer.
             - decoder_cross_attns: (num_layers, b, h, t, s) Decoder cross-attention weights per layer.
+            - extra_outputs: Optional dictionary for any extra outputs.
         """
         ...
 

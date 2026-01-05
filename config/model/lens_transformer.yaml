@@ -1,0 +1,39 @@
+defaults:
+  - /blocks/lens_7_5_3_1@lens
+  - _self_
+
+_target_: src.models.lens_transformer.LensTransformer
+
+# Transformer Args
+dim: 128
+n_locations: 4
+mask_type: hard
+
+# Helper Variables
+$n_layers: 4
+$dropout: 0.0
+
+$mha:
+  _target_: src.blocks.mha.MultiHeadAttention
+  dim: ${model.dim}
+  n_heads: 4
+  dropout: ${model.$dropout}
+
+$ff:
+  _target_: src.blocks.ff.FeedForward
+  dim: ${model.dim}
+  expand_factor: 2
+  act_fn:
+    _target_: torch.nn.GELU
+  gated: true
+  dropout: ${model.$dropout}
+
+encoder:
+  _target_: src.blocks.encoder.TransformerEncoder
+  n_layers: ${model.$n_layers}
+  layer:
+    _target_: src.blocks.encoder_layer.EncoderLayer
+    dim: ${model.dim}
+    mha: ${model.$mha}
+    ff: ${model.$ff}
+    pre_ln: false
