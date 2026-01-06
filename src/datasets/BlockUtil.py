@@ -329,7 +329,7 @@ def run_accumulation(a: str, b: str, max_length: int = None):
 
     # Algorithm Steps
     carry = [-1 for _ in range(max_digits + 1)]
-    b_state = [-1 for _ in range(deficit_b)]
+    b_state = []
     b_state.extend(reversed([int(d) for d in b]))
     b_state.extend([-1])
     progress_state = ["-1" for _ in range(max_digits)]
@@ -351,7 +351,7 @@ def run_accumulation(a: str, b: str, max_length: int = None):
         steps.append(make_step(progress_state, carry, a, b_state))
 
         # Result Step
-        b_state[i + deficit_b] = s % 10
+        b_state[i] = s % 10
         steps.append(make_step(progress_state, carry, a, b_state))
 
         # Progress Step
@@ -424,12 +424,12 @@ def run_multiplication(a: str, b: str, max_length = None):
     deficit_b = -min(0, len_b - len_a)
 
     # Static Line Utilities
-    position_line = lambda x: "?" + " " * (max_digits - len_a - 1 + max_diff) + "".join(str(d) if d != "-1" else " " for d in x[::-1])
-    position_line_comp = lambda x: "$" + " " * (max_digits - len_a - 1 + max_diff) + "".join(str(d) if d != "-1" else " " for d in x[::-1])
-    progress_line = lambda x: " " * (max_digits - len_b + max_diff) + "".join(str(d) if d != "-1" else " " for d in x[::-1])
-    update_row =  lambda x: " " * (max_digits - len_b + max_diff) + "".join(str(d) if d != "-1" else " " for d in x[::-1])
-    a_line = lambda x: " " * (max_digits - len_a + max_diff + deficit_a) + x
-    b_line = lambda x: "*" + " " * (max_digits - len_b - 1 + max_diff + deficit_b) + x
+    position_line = lambda x: "?" + " " * (max_digits - len_a + max_diff) + "".join(str(d) if d != "-1" else " " for d in x[::-1])
+    position_line_comp = lambda x: "$" + " " * (max_digits - len_a + max_diff) + "".join(str(d) if d != "-1" else " " for d in x[::-1])
+    progress_line = lambda x: " " * (max_digits - len_b + max_diff + 1) + "".join(str(d) if d != "-1" else " " for d in x[::-1])
+    update_row =  lambda x: " " * (max_digits - len_b + max_diff + 1) + "".join(str(d) if d != "-1" else " " for d in x[::-1])
+    a_line = lambda x: " " * (max_digits - len_a + max_diff + deficit_a + 1) + x
+    b_line = lambda x: "*" + " " * (max_digits - len_b + max_diff + deficit_b) + x
     accum_lines = lambda x: x
     make_step = lambda _pos, _prog, _update, _a, _b, _accum: "\n".join([position_line(_pos), progress_line(_prog), update_row(_update), a_line(_a), b_line(_b), accum_lines(_accum)])
     make_step_comp = lambda _pos, _prog, _update, _a, _b, _accum: "\n".join([position_line_comp(_pos), progress_line(_prog), update_row(_update), a_line(_a), b_line(_b), accum_lines(_accum)])
