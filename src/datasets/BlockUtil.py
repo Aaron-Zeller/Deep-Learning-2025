@@ -424,10 +424,6 @@ def run_multiplication(a: str, b: str, max_length = None):
     deficit_b = -min(0, len_b - len_a)
 
     # Static Line Utilities
-    print(max_digits - len_a + max_diff + deficit_a + 1)
-    print(max_digits - len_b + max_diff + deficit_b)
-    print(deficit_a)
-    print(deficit_b)
     position_line = lambda x: "?" + " " * (max_digits - len_a + max_diff) + "".join(str(d) if d != "-1" else " " for d in x[::-1])
     position_line_comp = lambda x: "$" + " " * (max_digits - len_a + max_diff) + "".join(str(d) if d != "-1" else " " for d in x[::-1])
     progress_line = lambda x: " " * (max_digits - len_b + max_diff + 1) + "".join(str(d) if d != "-1" else " " for d in x[::-1])
