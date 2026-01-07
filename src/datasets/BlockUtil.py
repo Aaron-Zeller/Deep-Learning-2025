@@ -323,7 +323,7 @@ def run_accumulation(a: str, b: str, max_length: int = None):
     # Static Line Utilities
     carry_line = lambda x: " " * (2 + max_diff) + "".join(str(d) if d >= 0 else " " for d in x[::-1])
     a_line = lambda x: " " * (3 + deficit_a + max_diff) + x
-    b_line = lambda x: "+" + "=" + " " * (deficit_b + max_diff) + "".join(str(d) if d >= 0 else " " for d in x[::-1]) 
+    b_line = lambda x: "+" + "=" + " " * (deficit_b + max_diff + 1) + "".join(str(d) if d >= 0 else " " for d in x[::-1]) 
     progress_line = lambda x: "?" + " " * (2 + max_diff) + "".join(str(d) if d != "-1" else " " for d in x[::-1]) 
     make_step = lambda _progress, _carry , _a, _b: "\n".join([progress_line(_progress), carry_line(_carry), a_line(_a), b_line(_b)])
 
@@ -331,7 +331,7 @@ def run_accumulation(a: str, b: str, max_length: int = None):
     carry = [-1 for _ in range(max_digits + 1)]
     b_state = []
     b_state.extend(reversed([int(d) for d in b]))
-    b_state.extend([-1])
+    b_state.extend([-1 for _ in range(deficit_b)])
     progress_state = ["-1" for _ in range(max_digits)]
 
     # Initial Step
@@ -424,12 +424,16 @@ def run_multiplication(a: str, b: str, max_length = None):
     deficit_b = -min(0, len_b - len_a)
 
     # Static Line Utilities
+    print(max_digits - len_a + max_diff + deficit_a + 1)
+    print(max_digits - len_b + max_diff + deficit_b)
+    print(deficit_a)
+    print(deficit_b)
     position_line = lambda x: "?" + " " * (max_digits - len_a + max_diff) + "".join(str(d) if d != "-1" else " " for d in x[::-1])
     position_line_comp = lambda x: "$" + " " * (max_digits - len_a + max_diff) + "".join(str(d) if d != "-1" else " " for d in x[::-1])
     progress_line = lambda x: " " * (max_digits - len_b + max_diff + 1) + "".join(str(d) if d != "-1" else " " for d in x[::-1])
     update_row =  lambda x: " " * (max_digits - len_b + max_diff + 1) + "".join(str(d) if d != "-1" else " " for d in x[::-1])
-    a_line = lambda x: " " * (max_digits - len_a + max_diff + deficit_a + 1) + x
-    b_line = lambda x: "*" + " " * (max_digits - len_b + max_diff + deficit_b) + x
+    a_line = lambda x: " " * (max_digits - len_a + max_diff + 1) + x
+    b_line = lambda x: "*" + " " * (max_digits - len_b + max_diff) + x
     accum_lines = lambda x: x
     make_step = lambda _pos, _prog, _update, _a, _b, _accum: "\n".join([position_line(_pos), progress_line(_prog), update_row(_update), a_line(_a), b_line(_b), accum_lines(_accum)])
     make_step_comp = lambda _pos, _prog, _update, _a, _b, _accum: "\n".join([position_line_comp(_pos), progress_line(_prog), update_row(_update), a_line(_a), b_line(_b), accum_lines(_accum)])
@@ -439,7 +443,7 @@ def run_multiplication(a: str, b: str, max_length = None):
     position[0] = "."
     progress = ["-1" for _ in range(len_b)]
     progress[0] = "."
-    update = ["-1" for _ in range(len_a)]
+    update = ["-1" for _ in range(len_b)]
     accumulated_result = 0
 
     # Internal State Variables
@@ -452,7 +456,7 @@ def run_multiplication(a: str, b: str, max_length = None):
     ap_str = lambda x, state: state + " " * (2 + max_diff) + "".join(str(d) if d != "-1" else " " for d in x[::-1])
     ac_str = lambda x: " " * (2 + max_diff) + "".join(str(d) if d >= 0 else " " for d in x[::-1]) + " "
     as_str = lambda x: " " * (3 + max_diff) + "".join(str(d) if d >= 0 else " " for d in x[::-1])
-    ar_str = lambda x: "+= " + " " * max_diff + "".join(str(d) if d >= 0 else " " for d in x[::-1])
+    ar_str = lambda x: "+=" + " " * (1 + max_diff) + "".join(str(d) if d >= 0 else " " for d in x[::-1])
     accum_block = lambda _prog, _state, _carry, _sum, _res: "\n".join([ap_str(_prog, _state), ac_str(_carry), as_str(_sum), ar_str(_res)])
     accum_block_complete = lambda _prog, _carry, _sum, _res: "\n".join([_prog, _carry, _sum, _res])
 
@@ -481,13 +485,21 @@ def run_multiplication(a: str, b: str, max_length = None):
 
             # Reset the Summand Completely
             for i in range(prod_len):
-                accum_summand[i] = -1
-                steps.append(make_step(position, progress, update, a, b, accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result)))
+                if accum_summand[i] != -1:
+                    accum_summand[i] = -1
+                    steps.append(make_step(position, progress, update, a, b, accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result)))
 
             # Reset the Progress Completely
             for i in range(prod_len):
-                accum_progress[i] = "-1"
-                steps.append(make_step(position, progress, update, a, b, accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result)))
+                if accum_progress[i] != "-1":
+                    accum_progress[i] = "-1"
+                    steps.append(make_step(position, progress, update, a, b, accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result)))
+            
+            # Reset the Carry Completely
+            for i in range(prod_len):
+                if accum_carry[i] != -1:
+                    accum_carry[i] = -1
+                    steps.append(make_step(position, progress, update, a, b, accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result)))
 
             # Add the First Digit - if it exists
             if dprod >= 10:
@@ -775,8 +787,7 @@ def run_division(a: str, b: str):
 
 
 
-
-steps = run_multiplication("37", "190")
+steps = run_multiplication("370", "19")
 for step in steps:
     print(step)
     print("==========")
