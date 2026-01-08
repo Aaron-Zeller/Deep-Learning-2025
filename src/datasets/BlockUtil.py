@@ -21,7 +21,7 @@ def run_addition(a: str, b: str) -> list[str]:
     + 123   + 123   + 123   + 123   + 123   + 123   + 123   + 123
     =       =       =   7   =   7   =  17   =  17   = 417   = 417
 
-    Number of Steps = ________________
+    Number of Steps = 2 * max_digits + 2
     """
 
     # Internal Length Variables
@@ -97,6 +97,8 @@ def run_subtraction(a: str, b: str) -> list[str]:
        - Result Step:  Borrow either 0 or 1 in next column, result in result entry is computed
     3. Completion:  Replace ? by $ in top left position of subtraction block.
 
+    -> in example copy and delete are done in one step
+
     ============================================ SWAPS ============================================
    
     ?       ?       ? 4     ? 45    ? 456   ? 456   ? 456   ? 456   ?  56   ?   6   ?      ?
@@ -112,7 +114,10 @@ def run_subtraction(a: str, b: str) -> list[str]:
     - 456   - 456   - 456   - 456   - 456   - 456   - 456   - 456  
     =-      =-      =-  6   =-  6   =- 36   =- 36   =-436   =-436
 
-    Number of Steps = ________________
+    Initial: 1
+    Swap Steps: 0 or 6 * max_digits + 1
+    Computation Steps: 2 * max_digits + 1
+    Number of Steps <=  8 * max_digits + 3
     """
 
     # Internal Length Variables
@@ -332,8 +337,6 @@ def run_accumulation(a: str, b: str, max_length: int = None):
     b_state = []
     b_state.extend(reversed([int(d) for d in b]))
     b_state.extend([0 for _ in range(deficit_b)])
-    print("deficit_b:", deficit_b)
-    print(b_state)
     progress_state = ["-1" for _ in range(max_digits)]
 
     # Initial Step
@@ -469,7 +472,7 @@ def run_multiplication(a: str, b: str, max_length = None):
     accum_result[0] = 0
     steps.append(make_step(position, progress, update, a, b, accum_block(accum_progress, "$" , accum_carry, accum_summand, accum_result)))
 
-    # Progress Steps - column by column
+    # Progress Steps - column by column - max: <= max_digits^2 * (max_digits^2 * (max_digits + 1) + 8 * max_digits + 10)
     for prog in range(len_b): 
         # Position Steps - go through all positions to finish current column
         for pos in range(len_a):
@@ -482,47 +485,47 @@ def run_multiplication(a: str, b: str, max_length = None):
             ones_idx = prog + pos
             tens_idx = ones_idx + 1
 
-            # Setup accumulation with ?
+            # Setup accumulation with ?    - max: 1
             steps.append(make_step(position, progress, update, a, b, accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result)))
 
-            # Reset the Summand Completely
-            for i in range(prod_len):
+            # Reset the Summand Completely - max: len(a) + len(b) + 1 <= 2 * max_digits + 1
+            for i in range(prod_len): 
                 if accum_summand[i] != -1:
                     accum_summand[i] = -1
                     steps.append(make_step(position, progress, update, a, b, accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result)))
 
-            # Reset the Progress Completely
+            # Reset the Progress Completely - max: <= 4 * max_digits + 1
             for i in range(prod_len):
                 if accum_progress[i] != "-1":
                     accum_progress[i] = "-1"
                     steps.append(make_step(position, progress, update, a, b, accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result)))
             
-            # Reset the Carry Completely
+            # Reset the Carry Completely - max: <= 6 * max_digits + 1
             for i in range(prod_len):
                 if accum_carry[i] != -1:
                     accum_carry[i] = -1
                     steps.append(make_step(position, progress, update, a, b, accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result)))
 
-            # Add the First Digit - if it exists
+            # Add the First Digit - if it exists - max: <= 6 * max_digits + 2
             if dprod >= 10:
                 accum_summand[tens_idx] = dprod // 10
                 steps.append(make_step(position, progress, update, a, b, accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result)))
             
-            # Add the Second Digit
+            # Add the Second Digit - max: <= 6 * max_digits + 3
             accum_summand[ones_idx] = dprod % 10
             steps.append(make_step(position, progress, update, a, b, accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result)))
 
-            # Add the Remaining Zeroes
+            # Add the Remaining Zeroes - max: <= 8 * max_digits + 3
             for i in range(ones_idx):
                 accum_summand[i] = 0
                 steps.append(make_step(position, progress, update, a, b, accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result)))
 
-            # Zero-Pad if Summand is Larger than Result
+            # Zero-Pad if Summand is Larger than Result - max: <= 8 * max_digits + 4
             if accum_result[tens_idx] != -1:
                 accum_result[i] = 0
                 steps.append(make_step(position, progress, update, a, b, accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result)))
 
-            # Run the Accumulator
+            # Run the Accumulator 
             dprod = dprod * (10**(prog + pos))
             steps_accum = run_accumulation(str(dprod), str(accumulated_result), prod_len + max_diff)
         
@@ -537,7 +540,7 @@ def run_multiplication(a: str, b: str, max_length = None):
             if prog == len_b - 1 and pos == len_a - 1:
                 func = make_step_comp
 
-            elif pos == len_a - 1:
+            elif pos == len_a - 1: # - max: <= 8 * max_digits + 10
                 # Copy Lower Dot Down into Update Row in Same Column
                 update[prog] = "."
                 steps.append(make_step(position, progress, update, a, b, accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result)))
@@ -564,7 +567,7 @@ def run_multiplication(a: str, b: str, max_length = None):
                 update[prog] = "-1"
                 steps.append(make_step(position, progress, update, a, b, accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result)))
                       
-            else:
+            else: # - max: <= 8 * max_digits + 6
                 # Move Upper Dot One to the Left - Copy Step
                 position[pos + 1] = "."
                 steps.append(make_step(position, progress, update, a, b, accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result)))
@@ -573,7 +576,8 @@ def run_multiplication(a: str, b: str, max_length = None):
                 position[pos] = "-1"
                 steps.append(make_step(position, progress, update, a, b, accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result)))
 
-            # Accumulation Step 
+            # Accumulation Step # - max: <= max_digits^2 * (max_digits + 1) + 8 * max_digits + 10
+            # Assuming both have length max_digits then we have #Steps: max_digits^2 * (max_digits + 1)
             for step in steps_accum:
                 lines = step.splitlines()
                     
@@ -804,7 +808,7 @@ def run_division(a: str, b: str):
 
 
 
-steps = run_multiplication("37", "19")
+steps = run_multiplication("37", "15")
 for step in steps:
     print(step)
     print("==========")
