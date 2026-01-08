@@ -2,16 +2,15 @@ import logging
 
 import torch
 from torch import Tensor
-
-from src.interfaces import DatasetBase
+from BlockUtil import *
 
 logger = logging.getLogger(__name__)
 
 
-class Block(DatasetBase):
+class Block(torch.utils.data.Dataset):
     """Dataset for addition problems represented as step-by-step 2D blackboard grids."""
 
-    def __init__(self, height: int, op: str, n_samples: int = 10000, max_digits: int = 3, seed: int = 42):
+    def __init__(self, op: str, n_samples: int = 10000, max_digits: int = 3, seed: int = 42):
         """Initialize addition dataset.
 
         Args:
@@ -31,7 +30,7 @@ class Block(DatasetBase):
         self.seq_len = self.get_sequence_length()
         self.seed = seed
         self.data = self._generate_data()
-        self.token_to_idx = list("0123456789+ -_\n")
+        self.token_to_idx = list("0123456789+-*/?$.= \n")
 
         logger.info(
             f"Initialized AdditionDataset with {n_samples} samples and {max_digits} digits => {len(self)} individual steps."
@@ -41,21 +40,29 @@ class Block(DatasetBase):
         match self.op:
             case "+":
                 return 4
+            case "+=":
+                return 4
             case "-":
                 return 5
+            case "-=":
+                return 4
             case "*":
-                return 7
+                return 8
             case "/":
-                return 14
+                return 17
             case _:
                 raise ValueError(f"Unknown operator: {self.op}")
 
     def get_width(self) -> int:
         match self.op:
             case "+":
-                return self.max_digits + 2 + 1
+                return self.max_digits + 2
+            case "+=":
+                return self.max_digits + 3
             case "-":
-                return self.max_digits + 2 + 1
+                return self.max_digits + 2
+            case "-=":
+                return self.max_digits + 3
             case "*":
                 return 2 * self.max_digits + 3 + 1
             case "/":
@@ -67,12 +74,14 @@ class Block(DatasetBase):
         match self.op:
             case "+":
                 return 2 * self.max_digits + 2
+            case "+=":
+                return 3 * self.max_digits + 2
             case "-":
-                return
+                return 8 * self.max_digits + 3
             case "*":
-                return
+                return self.max_digits * self.max_digits * (self.max_digits * self.max_digits * (self.max_digits + 1) + 8 * self.max_digits + 10)
             case "/":
-                return
+                return -1
             case _:
                 raise ValueError(f"Unknown operator: {self.op}")
 
@@ -133,51 +142,21 @@ class Block(DatasetBase):
 
     @staticmethod
     def run_algorithm(a: str, b: str, op: str) -> list[str]:
-        """Run algorithm step by step depending on op
-
-        Args:
-            a: First argument as string
-            b: Second argument as string
-            op: Operand to determine kind of block
-
-        Returns:
-            List of string representations of each step
-        """
-        max_digits = len(a)
-
-        # String Format Utilities
-        blank_line = lambda x: " " * 2 + "".join(str(d) if d >= 0 else "_" for d in x[::-1])
-        a_line = lambda x: " " * 3 + x
-        b_line = lambda x: "+" + " " * 2 + x
-        sep_line = lambda: "-" * (max_digits + 3)
-        make_step = lambda _carry, _a, _b, _out: "\n".join(
-            [blank_line(_carry), a_line(_a), b_line(_b), sep_line(), blank_line(_out)]
-        )
-
-        # Algorithm State
-        carry = [-1 for _ in range(max_digits + 1)]
-        out = [-1 for _ in range(max_digits + 1)]
-
-        # Initial step
-        steps = [make_step(carry, a, b, out)]
-
-        for i in range(max_digits):  # Each iteration produces two steps (compute digit + carry)
-            c = 0 if i == 0 else carry[i]
-            da = int(a[-i - 1])
-            db = int(b[-i - 1])
-            s = da + db + c
-
-            out[i] = s % 10
-            steps.append(make_step(carry, a, b, out))
-
-            carry[i + 1] = s // 10
-            steps.append(make_step(carry, a, b, out))
-
-        # Final step
-        out[-1] = carry[-1]
-        steps.append(make_step(carry, a, b, out))
-
-        return steps
+        match op:
+            case "+":
+                return run_addition(a, b)
+            case "+=":
+                return run_accumulation(a, b)
+            case "-":
+                return run_subtraction(a, b)
+            case "-=":
+                return run_decrementation(a, b)
+            case "*":
+                return run_multiplication(a, b)
+            case "/":
+                raise ValueError(f"Not yet implemented operator: {op}")
+            case _:
+                raise ValueError(f"Unknown operator: {op}")
 
     def __getitem__(self, idx: int) -> tuple[Tensor, Tensor]:
         """Get a dataset item as 2D blackboard grid representation.
