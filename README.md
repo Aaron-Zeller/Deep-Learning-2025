@@ -62,6 +62,21 @@ python3 train.py model=encoder_only_small dataset.n_samples=1000
 tensorboard --logdir outputs/
 ```
 
+## Plotting
+
+```
+python plotting/plotter.py \
+--model_dir outputs/lens_transformer_3_3_3_3_1_nomask_proj_grad/2025-12-23/18-38-22 \
+  --ckpt ckpt_0120.pth \
+  --activation_layers \
+      _forward_module.lens.0 \
+      _forward_module.lens.3 \
+      _forward_module.lens.5 \
+      _forward_module.lens.7 \
+      _forward_module.lens.8 \
+  --semantic_kernel_layer _forward_module.lens.0
+```
+
 ## References
 
 ```bibtex
