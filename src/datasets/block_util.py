@@ -36,7 +36,9 @@ def run_addition(a: str, b: str) -> list[str]:
     a_line = lambda x: " " * (2 + deficit_a) + x
     b_line = lambda x: "+" + " " * (deficit_b + 1) + x
     result_line = lambda x: "=" + "".join(str(d) if d >= 0 else " " for d in x[::-1])
-    make_step = lambda _carry, _a, _b, _result: "\n".join([carry_line(_carry), a_line(_a), b_line(_b), result_line(_result)])
+    make_step = lambda _carry, _a, _b, _result: "\n".join(
+        [carry_line(_carry), a_line(_a), b_line(_b), result_line(_result)]
+    )
 
     # Algorithm Steps
     carry = [-1 for _ in range(max_digits + 1)]
@@ -69,24 +71,27 @@ def run_addition(a: str, b: str) -> list[str]:
 
     # Completion Step
     comp_line = lambda x: "$" + "".join(str(d) if d >= 0 else " " for d in x[::-1])
-    make_step_comp = lambda _carry, _a, _b, _result: "\n".join([comp_line(_carry), a_line(_a), b_line(_b), result_line(_result)])
+    make_step_comp = lambda _carry, _a, _b, _result: "\n".join(
+        [comp_line(_carry), a_line(_a), b_line(_b), result_line(_result)]
+    )
     steps.append(make_step_comp(carry, a, b, result))
 
     return steps
+
 
 # TODO: Make compatible for numbers of different length
 def run_subtraction(a: str, b: str) -> list[str]:
     """
     Subtraction Block Steps
                 12345
-    1 swap   -> 
+    1 swap   ->
     2 borrow ->
     3 a      ->   456
     4 b      -> - 892
     5 result -> =
 
     1. Valid Setup: a >= b -> else do swap states (+ 3 * max_digits + 1), result row empty borrow row empty, swap row empty
-    + 1 due to the - sign being added 
+    + 1 due to the - sign being added
 
     swaps left to right direction
 
@@ -100,18 +105,18 @@ def run_subtraction(a: str, b: str) -> list[str]:
     -> in example copy and delete are done in one step
 
     ============================================ SWAPS ============================================
-   
+
     ?       ?       ? 4     ? 45    ? 456   ? 456   ? 456   ? 456   ?  56   ?   6   ?      ?
-    
-      456     456      56       6             8       89      892     892     892     892     892     
+
+      456     456      56       6             8       89      892     892     892     892     892
     - 892   - 892   - 892   - 892   - 892   -  92   -   2   -       - 4     - 45    - 456   - 456
-    =       =       =       =       =       =       =       =       =       =       =       =-      
+    =       =       =       =       =       =       =       =       =       =       =       =-
 
     ============================================ VALID ============================================
     ?       ?       ?       ?       ?      ?        ?       $
                1       1      01      01     001     001     001
-      892     892     892     892     892     892     892     892    
-    - 456   - 456   - 456   - 456   - 456   - 456   - 456   - 456  
+      892     892     892     892     892     892     892     892
+    - 456   - 456   - 456   - 456   - 456   - 456   - 456   - 456
     =-      =-      =-  6   =-  6   =- 36   =- 36   =-436   =-436
 
     Initial: 1
@@ -126,14 +131,16 @@ def run_subtraction(a: str, b: str) -> list[str]:
     max_digits = max(len_a, len_b)
     deficit_a = -min(0, len_a - len_b)
     deficit_b = -min(0, len_b - len_a)
-    
+
     # Static Line Utilities
     swap_line = lambda x: "?" + " " * 1 + "".join(str(d) if d >= 0 else " " for d in x[::-1])
     borrow_line = lambda x: " " * 1 + "".join(str(d) if d >= 0 else " " for d in x[::-1])
     a_line = lambda x: " " * 2 + "".join(str(d) if d >= 0 else " " for d in x[::-1])
     b_line = lambda x: "-" + " " * 1 + "".join(str(d) if d >= 0 else " " for d in x[::-1])
-    result_line = lambda x, _sign: "=" + ("-" if _sign else " ") +  "".join(str(d) if d >= 0 else " " for d in x[::-1])
-    make_step = lambda _swap, _borrow, _a, _b, _out, _sign: "\n".join([swap_line(_swap), borrow_line(_borrow), a_line(_a), b_line(_b), result_line(_out, _sign)])
+    result_line = lambda x, _sign: "=" + ("-" if _sign else " ") + "".join(str(d) if d >= 0 else " " for d in x[::-1])
+    make_step = lambda _swap, _borrow, _a, _b, _out, _sign: "\n".join(
+        [swap_line(_swap), borrow_line(_borrow), a_line(_a), b_line(_b), result_line(_out, _sign)]
+    )
 
     # Algorithm Steps
     swap = [-1 for _ in range(max_digits + 1)]
@@ -151,7 +158,7 @@ def run_subtraction(a: str, b: str) -> list[str]:
     steps = [make_step(swap, borrow, a_state, b_state, result, sign)]
 
     # Swap Steps
-    if(int(b) > int(a)):
+    if int(b) > int(a):
 
         # Also Swap A and B to Ensure Correct Result
         temp = a
@@ -170,7 +177,7 @@ def run_subtraction(a: str, b: str) -> list[str]:
             for i in range(max_digits):
                 if stage == 0:
                     # Copy from A to Swap Line
-                    swap[i] = a_state[i] # Copy to Swap Line
+                    swap[i] = a_state[i]  # Copy to Swap Line
                     steps.append(make_step(swap, borrow, a_state, b_state, result, sign))
 
                     # Remove from A Line
@@ -193,7 +200,7 @@ def run_subtraction(a: str, b: str) -> list[str]:
                     # Remove from Swap Line
                     swap[i] = -1
                     steps.append(make_step(swap, borrow, a_state, b_state, result, sign))
-    
+
     # Computation Steps
     for i in range(max_digits):
         # First Line has no Borrow
@@ -217,9 +224,12 @@ def run_subtraction(a: str, b: str) -> list[str]:
 
     # Completion Step
     comp_line = lambda x: "$" + " " + "".join(str(d) if d >= 0 else " " for d in x[::-1])
-    make_step_comp = lambda _swap, _borrow, _a, _b, _out, _sign: "\n".join([comp_line(_swap), borrow_line(_borrow), a_line(_a), b_line(_b), result_line(_out, _sign)])
+    make_step_comp = lambda _swap, _borrow, _a, _b, _out, _sign: "\n".join(
+        [comp_line(_swap), borrow_line(_borrow), a_line(_a), b_line(_b), result_line(_out, _sign)]
+    )
     steps.append(make_step_comp(swap, borrow, a_state, b_state, result, sign))
     return steps
+
 
 def run_pipe(a: str, b: str, u: str, d: str) -> list[str]:
     """
@@ -228,10 +238,10 @@ def run_pipe(a: str, b: str, u: str, d: str) -> list[str]:
 
     1          sender         7364
     ...
-    u          progress  
+    u          progress
     u + 1      pipe          ~u  b
     ...
-    u + b + 1  receiver 
+    u + b + 1  receiver
 
     progress made from left to right
     only valid if len(a) == len(b)
@@ -240,15 +250,15 @@ def run_pipe(a: str, b: str, u: str, d: str) -> list[str]:
 
 
     1. Column Rule: Completion when corresponding when sender entry is placed at receiver entry
-    2. Column Steps: 
+    2. Column Steps:
        - Initial Step:  Progress is empty (+1)
        - Move Step:     Entry is copied to receiver entry
        - Progress Step: Progress is tracked with . in progress entry.
     3. Completion:      Replace ? by $ in first position of progress row
-    
-     7364    7364    7364    7364    7364    7364    7364    7364    7364    7364    7364     
+
+     7364    7364    7364    7364    7364    7364    7364    7364    7364    7364    7364
     ?       ?       ?.      ?.      ?..     ?..     ?...    ?...    ?....   ?....   $....
-    ~1  1   ~1  1   ~1  1   ~1  1   ~1  1   ~1  1   ~1  1   ~1  1   ~1  1   ~1  1   ~1  1   
+    ~1  1   ~1  1   ~1  1   ~1  1   ~1  1   ~1  1   ~1  1   ~1  1   ~1  1   ~1  1   ~1  1
              7       7       73      73      736     736     7364    7364    7364    7364
 
     Number of Steps = ________________
@@ -260,7 +270,16 @@ def run_pipe(a: str, b: str, u: str, d: str) -> list[str]:
     pipe_line = lambda: "~" + str(u) + ((max_digits - 2) * " ") + str(d) + "\n"
     a_line = lambda x: " " + "".join(str(d) if d >= 0 else " " for d in x[::-1]) + "\n"
     b_line = lambda x: " " + "".join(str(d) if d >= 0 else " " for d in x[::-1]) + "\n"
-    make_step = lambda _progress, _a, _b: "".join([a_line(_a), "" if u == 1 else "\n" * (int(u) - 1), progress_line(_progress), pipe_line(), "" if d == 1 else "\n" * (int(d) - 1), b_line(_b)])
+    make_step = lambda _progress, _a, _b: "".join(
+        [
+            a_line(_a),
+            "" if u == 1 else "\n" * (int(u) - 1),
+            progress_line(_progress),
+            pipe_line(),
+            "" if d == 1 else "\n" * (int(d) - 1),
+            b_line(_b),
+        ]
+    )
 
     # Algorithm Steps
     a_state = []
@@ -278,15 +297,25 @@ def run_pipe(a: str, b: str, u: str, d: str) -> list[str]:
         steps.append(make_step(progress_state, a_state, b_state))
 
         # Track Progress
-        progress_state[i] = '.'
-        steps.append(make_step(progress_state, a_state, b_state))    
+        progress_state[i] = "."
+        steps.append(make_step(progress_state, a_state, b_state))
 
     # Completion Step
-    compl_line = lambda x: "$" + "".join(str(d) if d != "-1" else " " for d in x[::-1]) + "\n"   
-    make_step_comp = lambda _progress, _a, _b: "".join([a_line(_a), "" if u == 1 else "\n" * (int(u) - 1), compl_line(_progress), pipe_line(), "" if d == 1 else "\n" * (int(d) - 1), b_line(_b)])
-    steps.append(make_step_comp(progress_state, a_state, b_state))    
+    compl_line = lambda x: "$" + "".join(str(d) if d != "-1" else " " for d in x[::-1]) + "\n"
+    make_step_comp = lambda _progress, _a, _b: "".join(
+        [
+            a_line(_a),
+            "" if u == 1 else "\n" * (int(u) - 1),
+            compl_line(_progress),
+            pipe_line(),
+            "" if d == 1 else "\n" * (int(d) - 1),
+            b_line(_b),
+        ]
+    )
+    steps.append(make_step_comp(progress_state, a_state, b_state))
 
     return steps
+
 
 def run_accumulation(a: str, b: str, max_length: int = None):
     """
@@ -308,7 +337,7 @@ def run_accumulation(a: str, b: str, max_length: int = None):
     ?        ?        ?    .   ?    .   ?   ..   ?   ..   ?  ...   $  ...
                  0        0       10       10      010      010      010
        294      294      294      294      294      294      294      294
-    += 123   += 123   += 127   += 127   += 117   += 117   += 417   += 417  
+    += 123   += 123   += 127   += 127   += 117   += 117   += 417   += 417
 
     Number of Steps = ________________
     """
@@ -326,11 +355,13 @@ def run_accumulation(a: str, b: str, max_length: int = None):
     max_diff = max_length - max_digits
 
     # Static Line Utilities
-    progress_line = lambda x: "?" + " " * (2 + max_diff) + "".join(str(d) if d != "-1" else " " for d in x[::-1]) 
+    progress_line = lambda x: "?" + " " * (2 + max_diff) + "".join(str(d) if d != "-1" else " " for d in x[::-1])
     carry_line = lambda x: " " * (2 + max_diff) + "".join(str(d) if d >= 0 else " " for d in x[::-1])
     a_line = lambda x: " " * (3 + deficit_a + max_diff) + x
-    b_line = lambda x: "+" + "=" + " " * (max_diff + 1) + "".join(str(d) if d >= 0 else " " for d in x[::-1]) 
-    make_step = lambda _progress, _carry , _a, _b: "\n".join([progress_line(_progress), carry_line(_carry), a_line(_a), b_line(_b)])
+    b_line = lambda x: "+" + "=" + " " * (max_diff + 1) + "".join(str(d) if d >= 0 else " " for d in x[::-1])
+    make_step = lambda _progress, _carry, _a, _b: "\n".join(
+        [progress_line(_progress), carry_line(_carry), a_line(_a), b_line(_b)]
+    )
 
     # Algorithm Steps
     carry = [-1 for _ in range(max_digits + 1)]
@@ -356,7 +387,7 @@ def run_accumulation(a: str, b: str, max_length: int = None):
         steps.append(make_step(progress_state, carry, a, b_state))
 
         # Decrease Deficit of b in Case of Extension
-        #if i >= len_b:
+        # if i >= len_b:
         #    deficit_b = max(0, deficit_b - 1)
 
         # Result Step
@@ -373,13 +404,16 @@ def run_accumulation(a: str, b: str, max_length: int = None):
         steps.append(make_step(progress_state, carry, a, b_state))
 
     # Completion Step
-    comp_line = lambda x: "$" + " " * (2 + max_diff) + "".join(str(d) if d != "-1" else " " for d in x[::-1]) 
-    make_step_comp = lambda _progress, _carry, _a, _b: "\n".join([comp_line(_progress), carry_line(_carry), a_line(_a), b_line(_b)])
+    comp_line = lambda x: "$" + " " * (2 + max_diff) + "".join(str(d) if d != "-1" else " " for d in x[::-1])
+    make_step_comp = lambda _progress, _carry, _a, _b: "\n".join(
+        [comp_line(_progress), carry_line(_carry), a_line(_a), b_line(_b)]
+    )
     steps.append(make_step_comp(progress_state, carry, a, b_state))
 
     return steps
 
-def run_multiplication(a: str, b: str, max_length = None):
+
+def run_multiplication(a: str, b: str, max_length=None):
     """
     Multiplication Block Steps
 
@@ -405,7 +439,7 @@ def run_multiplication(a: str, b: str, max_length = None):
        - Digit Steps:           Compute the result of the digit multiplication and add the corresponding numbers of zeroes
        - Setup Step:            Add ? to top left of accumulation block + add digit multiplication result to accumulator summand row
        - Position Step:         Go to next position:
-                                - If lower dot (progress row) has reached left end ((len(b) - 1) steps) and 
+                                - If lower dot (progress row) has reached left end ((len(b) - 1) steps) and
                                   upper dot (position row) has reached left end we are done -> mark as complete + go to accumulation step
                                 - Else if upper dot (position row) has reached left end ((len(a) - 1) steps):
                                 - Copy lower dot down into update row in same column
@@ -433,15 +467,34 @@ def run_multiplication(a: str, b: str, max_length = None):
     deficit_b = -min(0, len_b - len_a)
 
     # Static Line Utilities
-    position_line = lambda x: "?" + " " * (max_digits - len_a + max_diff) + "".join(str(d) if d != "-1" else " " for d in x[::-1])
-    position_line_comp = lambda x: "$" + " " * (max_digits - len_a + max_diff) + "".join(str(d) if d != "-1" else " " for d in x[::-1])
-    progress_line = lambda x: " " * (max_digits - len_b + max_diff + 1) + "".join(str(d) if d != "-1" else " " for d in x[::-1])
-    update_row =  lambda x: " " * (max_digits - len_b + max_diff + 1) + "".join(str(d) if d != "-1" else " " for d in x[::-1])
+    position_line = (
+        lambda x: "?" + " " * (max_digits - len_a + max_diff) + "".join(str(d) if d != "-1" else " " for d in x[::-1])
+    )
+    position_line_comp = (
+        lambda x: "$" + " " * (max_digits - len_a + max_diff) + "".join(str(d) if d != "-1" else " " for d in x[::-1])
+    )
+    progress_line = lambda x: " " * (max_digits - len_b + max_diff + 1) + "".join(
+        str(d) if d != "-1" else " " for d in x[::-1]
+    )
+    update_row = lambda x: " " * (max_digits - len_b + max_diff + 1) + "".join(
+        str(d) if d != "-1" else " " for d in x[::-1]
+    )
     a_line = lambda x: " " * (max_digits - len_a + max_diff + 1) + x
     b_line = lambda x: "*" + " " * (max_digits - len_b + max_diff) + x
     accum_lines = lambda x: x
-    make_step = lambda _pos, _prog, _update, _a, _b, _accum: "\n".join([position_line(_pos), progress_line(_prog), update_row(_update), a_line(_a), b_line(_b), accum_lines(_accum)])
-    make_step_comp = lambda _pos, _prog, _update, _a, _b, _accum: "\n".join([position_line_comp(_pos), progress_line(_prog), update_row(_update), a_line(_a), b_line(_b), accum_lines(_accum)])
+    make_step = lambda _pos, _prog, _update, _a, _b, _accum: "\n".join(
+        [position_line(_pos), progress_line(_prog), update_row(_update), a_line(_a), b_line(_b), accum_lines(_accum)]
+    )
+    make_step_comp = lambda _pos, _prog, _update, _a, _b, _accum: "\n".join(
+        [
+            position_line_comp(_pos),
+            progress_line(_prog),
+            update_row(_update),
+            a_line(_a),
+            b_line(_b),
+            accum_lines(_accum),
+        ]
+    )
 
     # Algorithm Steps
     position = ["-1" for _ in range(len_a)]
@@ -456,24 +509,34 @@ def run_multiplication(a: str, b: str, max_length = None):
     accum_carry = [-1 for _ in range(prod_len)]
     accum_summand = [-1 for _ in range(prod_len)]
     accum_result = [-1 for _ in range(prod_len)]
-    
+
     # Join Helper Function
     ap_str = lambda x, state: state + " " * (2 + max_diff) + "".join(str(d) if d != "-1" else " " for d in x[::-1])
     ac_str = lambda x: " " * (2 + max_diff) + "".join(str(d) if d >= 0 else " " for d in x[::-1]) + " "
     as_str = lambda x: " " * (3 + max_diff) + "".join(str(d) if d >= 0 else " " for d in x[::-1])
     ar_str = lambda x: "+=" + " " * (1 + max_diff) + "".join(str(d) if d >= 0 else " " for d in x[::-1])
-    accum_block = lambda _prog, _state, _carry, _sum, _res: "\n".join([ap_str(_prog, _state), ac_str(_carry), as_str(_sum), ar_str(_res)])
+    accum_block = lambda _prog, _state, _carry, _sum, _res: "\n".join(
+        [ap_str(_prog, _state), ac_str(_carry), as_str(_sum), ar_str(_res)]
+    )
     accum_block_as_strings = lambda _prog, _carry, _sum, _res: "\n".join([_prog, _carry, _sum, _res])
 
     # Initial Step
-    steps = [make_step(position, progress, update, a, b, accum_block(accum_progress, "$", accum_carry, accum_summand, accum_result))]
+    steps = [
+        make_step(
+            position, progress, update, a, b, accum_block(accum_progress, "$", accum_carry, accum_summand, accum_result)
+        )
+    ]
 
     # Setup Accumulator
     accum_result[0] = 0
-    steps.append(make_step(position, progress, update, a, b, accum_block(accum_progress, "$" , accum_carry, accum_summand, accum_result)))
+    steps.append(
+        make_step(
+            position, progress, update, a, b, accum_block(accum_progress, "$", accum_carry, accum_summand, accum_result)
+        )
+    )
 
     # Progress Steps - column by column - max: <= max_digits^2 * (max_digits^2 * (max_digits + 1) + 8 * max_digits + 10)
-    for prog in range(len_b): 
+    for prog in range(len_b):
         # Position Steps - go through all positions to finish current column
         for pos in range(len_a):
             # Get digit product
@@ -486,52 +549,124 @@ def run_multiplication(a: str, b: str, max_length = None):
             tens_idx = ones_idx + 1
 
             # Setup accumulation with ?    - max: 1
-            steps.append(make_step(position, progress, update, a, b, accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result)))
+            steps.append(
+                make_step(
+                    position,
+                    progress,
+                    update,
+                    a,
+                    b,
+                    accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result),
+                )
+            )
 
             # Reset the Summand Completely - max: len(a) + len(b) + 1 <= 2 * max_digits + 1
-            for i in range(prod_len): 
+            for i in range(prod_len):
                 if accum_summand[i] != -1:
                     accum_summand[i] = -1
-                    steps.append(make_step(position, progress, update, a, b, accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result)))
+                    steps.append(
+                        make_step(
+                            position,
+                            progress,
+                            update,
+                            a,
+                            b,
+                            accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result),
+                        )
+                    )
 
             # Reset the Progress Completely - max: <= 4 * max_digits + 1
             for i in range(prod_len):
                 if accum_progress[i] != "-1":
                     accum_progress[i] = "-1"
-                    steps.append(make_step(position, progress, update, a, b, accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result)))
-            
+                    steps.append(
+                        make_step(
+                            position,
+                            progress,
+                            update,
+                            a,
+                            b,
+                            accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result),
+                        )
+                    )
+
             # Reset the Carry Completely - max: <= 6 * max_digits + 1
             for i in range(prod_len):
                 if accum_carry[i] != -1:
                     accum_carry[i] = -1
-                    steps.append(make_step(position, progress, update, a, b, accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result)))
+                    steps.append(
+                        make_step(
+                            position,
+                            progress,
+                            update,
+                            a,
+                            b,
+                            accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result),
+                        )
+                    )
 
             # Add the First Digit - if it exists - max: <= 6 * max_digits + 2
             if dprod >= 10:
                 accum_summand[tens_idx] = dprod // 10
-                steps.append(make_step(position, progress, update, a, b, accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result)))
-            
+                steps.append(
+                    make_step(
+                        position,
+                        progress,
+                        update,
+                        a,
+                        b,
+                        accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result),
+                    )
+                )
+
             # Add the Second Digit - max: <= 6 * max_digits + 3
             accum_summand[ones_idx] = dprod % 10
-            steps.append(make_step(position, progress, update, a, b, accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result)))
+            steps.append(
+                make_step(
+                    position,
+                    progress,
+                    update,
+                    a,
+                    b,
+                    accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result),
+                )
+            )
 
             # Add the Remaining Zeroes - max: <= 8 * max_digits + 3
             for i in range(ones_idx):
                 accum_summand[i] = 0
-                steps.append(make_step(position, progress, update, a, b, accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result)))
+                steps.append(
+                    make_step(
+                        position,
+                        progress,
+                        update,
+                        a,
+                        b,
+                        accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result),
+                    )
+                )
 
             # Zero-Pad if Summand is Larger than Result - max: <= 8 * max_digits + 4
             if accum_result[tens_idx] != -1:
                 accum_result[i] = 0
-                steps.append(make_step(position, progress, update, a, b, accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result)))
+                steps.append(
+                    make_step(
+                        position,
+                        progress,
+                        update,
+                        a,
+                        b,
+                        accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result),
+                    )
+                )
 
-            # Run the Accumulator 
-            dprod = dprod * (10**(prog + pos))
+            # Run the Accumulator
+            dprod = dprod * (10 ** (prog + pos))
             steps_accum = run_accumulation(str(dprod), str(accumulated_result), prod_len + max_diff)
-        
+
             # Save the Result Internally for Easy Handling
             accumulated_result = accumulated_result + dprod
-            
+
             # Use Different Functions to Differentiate Between Completion and Continuation
             func = make_step
 
@@ -540,47 +675,119 @@ def run_multiplication(a: str, b: str, max_length = None):
             if prog == len_b - 1 and pos == len_a - 1:
                 func = make_step_comp
 
-            elif pos == len_a - 1: # - max: <= 8 * max_digits + 10
+            elif pos == len_a - 1:  # - max: <= 8 * max_digits + 10
                 # Copy Lower Dot Down into Update Row in Same Column
                 update[prog] = "."
-                steps.append(make_step(position, progress, update, a, b, accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result)))
+                steps.append(
+                    make_step(
+                        position,
+                        progress,
+                        update,
+                        a,
+                        b,
+                        accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result),
+                    )
+                )
 
                 # Delete Lower Dot from Progress Row
                 progress[prog] = "-1"
-                steps.append(make_step(position, progress, update, a, b, accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result)))
+                steps.append(
+                    make_step(
+                        position,
+                        progress,
+                        update,
+                        a,
+                        b,
+                        accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result),
+                    )
+                )
 
-                # Move Upper Dot to Right Top Corner - Copy Step 
-                if pos != 0: # Ensures: No Redundant Step
+                # Move Upper Dot to Right Top Corner - Copy Step
+                if pos != 0:  # Ensures: No Redundant Step
                     position[0] = "."
-                    steps.append(make_step(position, progress, update, a, b, accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result)))
+                    steps.append(
+                        make_step(
+                            position,
+                            progress,
+                            update,
+                            a,
+                            b,
+                            accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result),
+                        )
+                    )
 
-                # Move Upper Dot to Right Top Corner - Deletion Step 
-                if pos != 0: # Ensures: No Redundant Step
+                # Move Upper Dot to Right Top Corner - Deletion Step
+                if pos != 0:  # Ensures: No Redundant Step
                     position[pos] = "-1"
-                    steps.append(make_step(position, progress, update, a, b, accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result)))
+                    steps.append(
+                        make_step(
+                            position,
+                            progress,
+                            update,
+                            a,
+                            b,
+                            accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result),
+                        )
+                    )
 
                 # Copy Lower Dot from Update Row into Progress Row Shifted One to the Left
                 progress[prog + 1] = "."
-                steps.append(make_step(position, progress, update, a, b, accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result)))
+                steps.append(
+                    make_step(
+                        position,
+                        progress,
+                        update,
+                        a,
+                        b,
+                        accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result),
+                    )
+                )
 
                 # Remove Lower Dot from Update Row
                 update[prog] = "-1"
-                steps.append(make_step(position, progress, update, a, b, accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result)))
-                      
-            else: # - max: <= 8 * max_digits + 6
+                steps.append(
+                    make_step(
+                        position,
+                        progress,
+                        update,
+                        a,
+                        b,
+                        accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result),
+                    )
+                )
+
+            else:  # - max: <= 8 * max_digits + 6
                 # Move Upper Dot One to the Left - Copy Step
                 position[pos + 1] = "."
-                steps.append(make_step(position, progress, update, a, b, accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result)))
-            
+                steps.append(
+                    make_step(
+                        position,
+                        progress,
+                        update,
+                        a,
+                        b,
+                        accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result),
+                    )
+                )
+
                 # Move Upper Dot One to the Left - Deletion Step
                 position[pos] = "-1"
-                steps.append(make_step(position, progress, update, a, b, accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result)))
+                steps.append(
+                    make_step(
+                        position,
+                        progress,
+                        update,
+                        a,
+                        b,
+                        accum_block(accum_progress, "?", accum_carry, accum_summand, accum_result),
+                    )
+                )
 
             # Accumulation Step # - max: <= max_digits^2 * (max_digits + 1) + 8 * max_digits + 10
             # Assuming both have length max_digits then we have #Steps: max_digits^2 * (max_digits + 1)
             for step in steps_accum:
                 lines = step.splitlines()
-                    
+
                 # Make Steps
                 accum_progress = ["." for c in reversed(lines[0]) if c == "."]
                 accum_carry = [int(c) for c in reversed(lines[1]) if c.isdigit()]
@@ -588,11 +795,15 @@ def run_multiplication(a: str, b: str, max_length = None):
                 accum_result = [int(c) for c in reversed(lines[3]) if c.isdigit()]
 
                 # Keep Length Constant
-                accum_progress = accum_progress + ["-1" for _ in range(prod_len - len(accum_progress))] 
-                accum_carry = accum_carry + [-1 for _ in range(prod_len - len(accum_carry))] 
-                accum_summand = accum_summand + [-1 for _ in range(prod_len - len(accum_summand))] 
-                accum_result = accum_result + [-1 for _ in range(prod_len - len(accum_result))] 
-                steps.append(func(position, progress, update, a, b, accum_block_as_strings(lines[0], lines[1], lines[2], lines[3])))    
+                accum_progress = accum_progress + ["-1" for _ in range(prod_len - len(accum_progress))]
+                accum_carry = accum_carry + [-1 for _ in range(prod_len - len(accum_carry))]
+                accum_summand = accum_summand + [-1 for _ in range(prod_len - len(accum_summand))]
+                accum_result = accum_result + [-1 for _ in range(prod_len - len(accum_result))]
+                steps.append(
+                    func(
+                        position, progress, update, a, b, accum_block_as_strings(lines[0], lines[1], lines[2], lines[3])
+                    )
+                )
 
     return steps
 
@@ -619,7 +830,7 @@ def run_decrementation(a: str, b: str, max_length: int):
        - Borrow Step:   Borrow either 0 or 1 in next column, no result
        - Result Step:   Borrow either 0 or 1 in next column, result in result entry is computed
        - Progress Step: Track Progress in Progress Row in Current Column
-    3. Completion:  Replace ? by $ in top left position of decrementation block 
+    3. Completion:  Replace ? by $ in top left position of decrementation block
 
     Number of Steps = ________________
     """
@@ -635,13 +846,15 @@ def run_decrementation(a: str, b: str, max_length: int):
     deficit_a = -min(0, len_a - len_b)
     deficit_b = -min(0, len_b - len_a)
     max_diff = max_length - max_digits
-    
+
     # Static Line Utilities
     progress_line = lambda x: "?" + " " * (1 + max_diff) + "".join(str(d) if d != "-1" else " " for d in x[::-1])
     borrow_line = lambda x: " " * (1 + max_diff) + "".join(str(d) if d >= 0 else " " for d in x[::-1])
     a_line = lambda x: " " * (2 + max_diff) + "".join(str(d) if d >= 0 else " " for d in x[::-1])
     b_line = lambda x: "-=" + max_diff * " " + "".join(str(d) if d >= 0 else " " for d in x[::-1])
-    make_step = lambda _progress, _borrow, _a, _b: "\n".join([progress_line(_progress), borrow_line(_borrow), a_line(_a), b_line(_b)])
+    make_step = lambda _progress, _borrow, _a, _b: "\n".join(
+        [progress_line(_progress), borrow_line(_borrow), a_line(_a), b_line(_b)]
+    )
 
     # Algorithm Steps
     progress = ["-1" for _ in range(max_digits)]
@@ -655,7 +868,7 @@ def run_decrementation(a: str, b: str, max_length: int):
 
     # Initial Step
     steps = [make_step(progress, borrow, a_state, b_state)]
-    
+
     # Computation Steps
     for i in range(max_digits):
         # First Line has no Borrow
@@ -681,13 +894,14 @@ def run_decrementation(a: str, b: str, max_length: int):
         progress[i] = "."
         steps.append(make_step(progress, borrow, a_state, b_state))
 
-
     # Completion Step
     comp_line = lambda x: "$" + " " + "".join(str(d) if d != "-1" else " " for d in x[::-1])
-    make_step_comp = lambda _progress, _borrow, _a, _b: "\n".join([comp_line(_progress), borrow_line(_borrow), a_line(_a), b_line(_b)])
+    make_step_comp = lambda _progress, _borrow, _a, _b: "\n".join(
+        [comp_line(_progress), borrow_line(_borrow), a_line(_a), b_line(_b)]
+    )
     steps.append(make_step_comp(progress, borrow, a_state, b_state))
 
-    # Clear Steps 
+    # Clear Steps
     for i in range(max_digits):
         a_state[i] = -1
         steps.append(make_step_comp(progress, borrow, a_state, b_state))
@@ -703,6 +917,7 @@ def run_decrementation(a: str, b: str, max_length: int):
         steps.append(make_step_comp(progress, borrow, a_state, b_state))
 
     return steps
+
 
 def run_division(a: str, b: str):
     """
@@ -735,7 +950,7 @@ def run_division(a: str, b: str):
 
     3. For i = 1, ... , len_a:
         I.       Compute largest single digit multiple (1-9) of 10^i * b that is still smaller than the value in the decrementation a / result row (this can be skipped) -> jump to step X immediately
-        II.      Add digit to multiplication block b row at column len_a - i - 1 
+        II.      Add digit to multiplication block b row at column len_a - i - 1
         III.     Reset progress and set $ to ? in multiplication block
         IV.      Run multiplication block
         V.       Reset progress and set $ to ? in pipe block
@@ -743,10 +958,10 @@ def run_division(a: str, b: str):
         VII.     Reset progress and set $ to ? in subtraction block
         VIII.    Run subtraction block
         IX.      Shift result digit down (Copy and Delete from multiplication block)
-        X.       Track Progress 
+        X.       Track Progress
 
     4. Completion: All blocks have $ in them -> Set ? to $ in division block
-    
+
     """
 
     # Internal Length Variables
@@ -761,8 +976,12 @@ def run_division(a: str, b: str):
     a_line = lambda x: " " * 3 + "".join(str(d) if d != "-1" else " " for d in x[::-1])
     b_line = lambda x: "/" + " " * (2 + diff_len) + "".join(str(d) if d != "-1" else " " for d in x[::-1])
     result_line = lambda x: "=" + " " * 2 + "".join(str(d) if d != "-1" else " " for d in x[::-1])
-    make_step = lambda _prog, _a, _b, _res, _mult, _pipe, _decum: "\n".join([progress_line(_prog), a_line(_a), b_line(_b), _mult, _pipe, _decum, result_line(_res)])
-    make_step_comp = lambda _prog, _a, _b, _res, _mult, _pipe, _decum: "\n".join([progress_line_comp(_prog), a_line(_a), b_line(_b), _mult, _pipe, _decum, result_line(_res)])
+    make_step = lambda _prog, _a, _b, _res, _mult, _pipe, _decum: "\n".join(
+        [progress_line(_prog), a_line(_a), b_line(_b), _mult, _pipe, _decum, result_line(_res)]
+    )
+    make_step_comp = lambda _prog, _a, _b, _res, _mult, _pipe, _decum: "\n".join(
+        [progress_line_comp(_prog), a_line(_a), b_line(_b), _mult, _pipe, _decum, result_line(_res)]
+    )
 
     # Algorithm Steps
     progress = ["-1" for _ in range(max_digits)]
@@ -783,18 +1002,20 @@ def run_division(a: str, b: str):
     mpos_str = lambda x, state: state + " " * 1 + "".join(str(d) if d != "-1" else " " for d in x[::-1])
     mprog_str = lambda x: " " * 2 + "".join(str(d) if d != "-1" else " " for d in x[::-1])
     ma_str = lambda: " " * (2 + max_digits - len_b) + b
-    mb_str = lambda x: " " * (2 + max_digits - len(x)) + x 
+    mb_str = lambda x: " " * (2 + max_digits - len(x)) + x
     maccum_prog = lambda x: " " * 2 + "".join(str(d) if d != "-1" else " " for d in x[::-1])
     maccum_carry = lambda x: " " * 2 + "".join(str(d) if d != "-1" else " " for d in x[::-1])
     maccum_sum = lambda x: " " * 2 + "".join(str(d) if d != "-1" else " " for d in x[::-1])
-    # mult_block = lambda _pos, _prog, _mb, 
-  
+    # mult_block = lambda _pos, _prog, _mb,
+
     # This is just old stugg
     ap_str = lambda x, state: state + " " * 2 + "".join(str(d) if d != "-1" else " " for d in x[::-1])
     ac_str = lambda x: 2 * " " + "".join(str(d) if d >= 0 else " " for d in x[::-1]) + " "
     as_str = lambda x: 3 * " " + "".join(str(d) if d >= 0 else " " for d in x[::-1])
     ar_str = lambda x: "+= " + "".join(str(d) if d >= 0 else " " for d in x[::-1])
-    accum_block = lambda _prog, _state, _carry, _sum, _res: "\n".join([ap_str(_prog, _state), ac_str(_carry), as_str(_sum), ar_str(_res)])
+    accum_block = lambda _prog, _state, _carry, _sum, _res: "\n".join(
+        [ap_str(_prog, _state), ac_str(_carry), as_str(_sum), ar_str(_res)]
+    )
     accum_block_complete = lambda _prog, _carry, _sum, _res: "\n".join([_prog, _carry, _sum, _res])
 
     """
@@ -804,12 +1025,8 @@ def run_division(a: str, b: str):
     # Internal State Variables - Decrementation Block
 
 
-    
-
-
-
-steps = run_multiplication("37", "15")
-for step in steps:
-    print(step)
-    print("==========")
-
+if __name__ == "__main__":
+    steps = run_multiplication("37", "15")
+    lines = len(steps[0])
+    for line in range(lines):
+        print(" | ".join([step.splitlines()[line] for step in steps]))

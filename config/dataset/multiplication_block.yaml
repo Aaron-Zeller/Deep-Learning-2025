@@ -1,0 +1,5 @@
+_target_: src.datasets.block.BlockDataset
+op: "*"
+n_samples: 5000
+max_digits: 3
+seed: 42

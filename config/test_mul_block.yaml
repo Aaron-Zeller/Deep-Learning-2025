@@ -1,0 +1,31 @@
+defaults:
+  - config
+  - blocks@model.lens: lens_3_3_3_3_1
+  - override model: lens_transformer
+  - override dataset: multiplication_block
+  - _self_
+
+name: test_mul_block
+val_split: 0.1
+n_epochs: 1000
+proj_grad: true
+mix_grad: false
+val_min_digits: 1
+val_max_digits: 5
+
+model:
+  mask_type: none
+
+head:
+  n_registers: 0
+
+dataset:
+  n_samples: 10000
+  max_digits: 3
+
+logging:
+  save_every_n_epochs: 3
+  val_every_n_epochs: 3
+
+runtime:
+  n_workers: 4

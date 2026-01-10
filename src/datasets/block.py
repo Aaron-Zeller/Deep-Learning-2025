@@ -2,12 +2,12 @@ import logging
 
 import torch
 from torch import Tensor
-from BlockUtil import *
+from src.datasets.block_util import *
 
 logger = logging.getLogger(__name__)
 
 
-class Block(torch.utils.data.Dataset):
+class BlockDataset(torch.utils.data.Dataset):
     """Dataset for addition problems represented as step-by-step 2D blackboard grids."""
 
     def __init__(self, op: str, n_samples: int = 10000, max_digits: int = 3, seed: int = 42):
@@ -33,7 +33,7 @@ class Block(torch.utils.data.Dataset):
         self.token_to_idx = list("0123456789+-*/?$.= \n")
 
         logger.info(
-            f"Initialized AdditionDataset with {n_samples} samples and {max_digits} digits => {len(self)} individual steps."
+            f"Initialized BlockDataset({self.op}) with {n_samples} samples and {max_digits} digits => {len(self)} individual steps."
         )
 
     def get_height(self) -> int:
@@ -47,7 +47,7 @@ class Block(torch.utils.data.Dataset):
             case "-=":
                 return 4
             case "*":
-                return 8
+                return 9
             case "/":
                 return 17
             case _:
@@ -79,7 +79,11 @@ class Block(torch.utils.data.Dataset):
             case "-":
                 return 8 * self.max_digits + 3
             case "*":
-                return self.max_digits * self.max_digits * (self.max_digits * self.max_digits * (self.max_digits + 1) + 8 * self.max_digits + 10)
+                return (
+                    self.max_digits
+                    * self.max_digits
+                    * (self.max_digits * self.max_digits * (self.max_digits + 1) + 8 * self.max_digits + 10)
+                )
             case "/":
                 return -1
             case _:
@@ -121,7 +125,7 @@ class Block(torch.utils.data.Dataset):
         a = str(sample[0].item()).zfill(self.max_digits)
         b = str(sample[1].item()).zfill(self.max_digits)
 
-        sample = self.run_algorithm(a, b)
+        sample = self.run_algorithm(a, b, self.op)
 
         steps = torch.ones((len(sample), self.h, self.w), dtype=torch.long) * self.token_to_idx.index("\n")
 
@@ -154,7 +158,7 @@ class Block(torch.utils.data.Dataset):
             case "*":
                 return run_multiplication(a, b)
             case "/":
-                raise ValueError(f"Not yet implemented operator: {op}")
+                raise NotImplementedError(f"Not yet implemented operator: {op}")
             case _:
                 raise ValueError(f"Unknown operator: {op}")
 
@@ -190,11 +194,12 @@ class Block(torch.utils.data.Dataset):
         a = str(sample[0].item()).zfill(self.max_digits)
         b = str(sample[1].item()).zfill(self.max_digits)
 
-        steps = self.run_algorithm(a, b)
+        steps = self.run_algorithm(a, b, self.op)
 
         inp_step = torch.ones((self.h, self.w), dtype=torch.long) * self.token_to_idx.index("\n")
         out_step = torch.ones((self.h, self.w), dtype=torch.long) * self.token_to_idx.index("\n")
 
+        seq_idx = seq_idx % len(steps)
         next_seq_idx = seq_idx + 1 if seq_idx + 1 < len(steps) else seq_idx
         for i in range(self.h):
             for j in range(self.w - 1):  # \n already filled
