@@ -1,19 +1,19 @@
 defaults:
   - config
-  - blocks@model.lens: lens_3_3_3_3_1
+  - blocks@model.lens: lens_7_5_3_1
   - override model: lens_transformer
   - override head: split_action_distribution
   - _self_
 
-name: lens_transformer_3_3_3_3_1_nomask_proj_grad_splitaction
+name: lens_transformer_7_5_3_1_softmask_proj_grad_splitaction
 n_epochs: 1000
-proj_grad: true
-mix_grad: false
+proj_grad: false
+mix_grad: true
 val_min_digits: 1
 val_max_digits: 18
 
 model:
-  mask_type: none
+  mask_type: soft
 
 head:
   n_registers: 0
