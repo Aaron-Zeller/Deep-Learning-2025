@@ -321,17 +321,13 @@ class Trainer:
                 for j in range(val_dataset.w - 1):  # \n already filled
                     current_grid[0, i, j] = val_dataset.token_to_idx.index(s.split("\n")[i][j])
 
-            current_grid = current_grid.to(device)
+            current_grid = self.fabric.to_device(current_grid)
 
             for _ in range(steps_to_rollout):
                 with torch.no_grad():
                     _, _, y_pred, _, _, _, _, _, _ = self.forward((current_grid, current_grid))
 
-                    if isinstance(y_pred, tuple):
-                        y_pred_mapped = tuple(y_p for y_p in y_pred)
-                        out = self.head.step(current_grid, y_pred_mapped)
-                    else:
-                        out = self.head.step(current_grid, y_pred)
+                    out = self.head.step(current_grid, y_pred)
 
                     # The prediction becomes the input for the next step
                     current_grid = out
