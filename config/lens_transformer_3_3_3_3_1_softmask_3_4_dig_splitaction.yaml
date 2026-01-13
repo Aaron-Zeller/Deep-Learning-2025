@@ -5,7 +5,7 @@ defaults:
   - override head: split_action_distribution
   - _self_
 
-name: lens_transformer_3_3_3_3_1_softmask_proj_grad_splitaction
+name: lens_transformer_3_3_3_3_1_softmask_3_4_dig_splitaction
 n_epochs: 1000
 proj_grad: false
 mix_grad: true
