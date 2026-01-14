@@ -11,13 +11,14 @@ logger = logging.getLogger(__name__)
 class AdditionDataset(DatasetBase):
     """Dataset for addition problems represented as step-by-step 2D blackboard grids."""
 
-    def __init__(self, n_samples: int = 10000, max_digits: int = 3, seed: int = 42):
+    def __init__(self, n_samples: int = 10000, max_digits: int = 3, seed: int = 42, separate_carry: bool = False):
         """Initialize addition dataset.
 
         Args:
             n_samples: Number of addition problems to generate.
             max_digits: Maximum number of digits in each number.
             seed: Random seed for reproducibility.
+            separate_carry: Whether to use separate carry symbols (0 -> O, 1 -> I).
         """
         self.n_samples = n_samples
         self.max_digits = max_digits
@@ -26,10 +27,11 @@ class AdditionDataset(DatasetBase):
         self.seq_len = 2 * (max_digits + 1)
         self.seed = seed
         self.data = self._generate_data()
-        self.token_to_idx = list("0123456789+ -_\n")
+        self.separate_carry = separate_carry
+        self.token_to_idx = list("0123456789+ -_\n") if not self.separate_carry else list("0123456789+ -_OI\n")
 
         logger.info(
-            f"Initialized AdditionDataset with {n_samples} samples and {max_digits} digits => {len(self)} individual steps."
+            f"Initialized AdditionDataset with {n_samples} samples and {max_digits} digits => {len(self)} individual steps. Separate carry: {separate_carry}"
         )
 
     def vocab_size(self) -> int:
@@ -79,7 +81,7 @@ class AdditionDataset(DatasetBase):
         a = self._digits_to_string(sample[0])
         b = self._digits_to_string(sample[1])
 
-        sample = self.run_algorithm(a, b)
+        sample = self.run_algorithm(a, b, self.separate_carry)
 
         steps = torch.ones((len(sample), self.h, self.w), dtype=torch.long) * self.token_to_idx.index("\n")
 
@@ -99,12 +101,13 @@ class AdditionDataset(DatasetBase):
         return out
 
     @staticmethod
-    def run_algorithm(a: str, b: str) -> list[str]:
+    def run_algorithm(a: str, b: str, separate_carry: bool = False) -> list[str]:
         """Run addition algorithm step by step.
 
         Args:
             a: First summand as string
             b: Second summand as string
+            separate_carry: Whether to use separate carry symbols
 
         Returns:
             List of string representations of each step
@@ -113,11 +116,16 @@ class AdditionDataset(DatasetBase):
 
         # String Format Utilities
         blank_line = lambda x: " " * 2 + "".join(str(d) if d >= 0 else "_" for d in x[::-1])
+        carry_line = (
+            blank_line
+            if not separate_carry
+            else lambda x: " " * 2 + "".join(["O", "I"][d] if d >= 0 else "_" for d in x[::-1])
+        )
         a_line = lambda x: " " * 3 + x
         b_line = lambda x: "+" + " " * 2 + x
         sep_line = lambda: "-" * (max_digits + 3)
         make_step = lambda _carry, _a, _b, _out: "\n".join(
-            [blank_line(_carry), a_line(_a), b_line(_b), sep_line(), blank_line(_out)]
+            [carry_line(_carry), a_line(_a), b_line(_b), sep_line(), blank_line(_out)]
         )
 
         # Algorithm State
@@ -177,7 +185,7 @@ class AdditionDataset(DatasetBase):
         a = self._digits_to_string(sample[0])
         b = self._digits_to_string(sample[1])
 
-        steps = AdditionDataset.run_algorithm(a, b)
+        steps = AdditionDataset.run_algorithm(a, b, self.separate_carry)
 
         inp_step = torch.ones((self.h, self.w), dtype=torch.long) * self.token_to_idx.index("\n")
         out_step = torch.ones((self.h, self.w), dtype=torch.long) * self.token_to_idx.index("\n")
