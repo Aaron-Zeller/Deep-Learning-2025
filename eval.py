@@ -3,6 +3,7 @@ import sys
 import argparse
 from pathlib import Path
 from typing import List, Dict, Callable
+from tqdm import tqdm
 
 import torch
 from omegaconf import OmegaConf
@@ -28,9 +29,69 @@ def metric_full_sample_accuracy(trainer: Trainer, k: int, epoch: int = 0) -> flo
     return trainer.val_full_sample_epoch(k=k, epoch=epoch)
 
 
+def metric_full_sample_off_by_one_accuracy(trainer: Trainer, k: int, epoch: int = 0) -> float:
+    """Wrapper for full step accuracy allowing off-by-one errors."""
+    trainer.model.eval()
+    trainer.head.eval()
+    val_dataset = trainer.val_datasets[k]
+    n_samples = len(val_dataset.data)
+    correct_count = 0
+
+    # unrolling steps
+    steps_to_rollout = val_dataset.seq_len - 1
+
+    pbar = tqdm(range(n_samples), desc=f"[{k}] Rollout Epoch {epoch}")
+
+    for idx in pbar:
+        sample_digits = val_dataset.data[idx]
+        a = val_dataset._digits_to_string(sample_digits[0])
+        b = val_dataset._digits_to_string(sample_digits[1])
+
+        gt_steps = val_dataset.run_algorithm(a, b)
+
+        current_grid = torch.ones((1, val_dataset.h, val_dataset.w), dtype=torch.long) * val_dataset.token_to_idx.index(
+            "\n"
+        )
+
+        final_grid = torch.ones((1, val_dataset.h, val_dataset.w), dtype=torch.long) * val_dataset.token_to_idx.index(
+            "\n"
+        )
+
+        # Parse the first step string
+        s = gt_steps[0]
+        t = gt_steps[-1]
+        for i in range(val_dataset.h):
+            for j in range(val_dataset.w - 1):  # \n already filled
+                current_grid[0, i, j] = val_dataset.token_to_idx.index(s.split("\n")[i][j])
+                final_grid[0, i, j] = val_dataset.token_to_idx.index(t.split("\n")[i][j])
+
+        current_grid = trainer.fabric.to_device(current_grid)
+        final_grid = trainer.fabric.to_device(final_grid)
+
+        for _ in range(steps_to_rollout):
+            with torch.no_grad():
+                _, _, y_pred, _, _, _, _, _, _ = trainer.forward((current_grid, current_grid))
+                out = trainer.head.step(current_grid, y_pred)
+                current_grid = out
+
+        pred_grid = current_grid[0].cpu()
+        gt_grid = final_grid[0].cpu()
+
+        mismatches = (pred_grid != gt_grid).sum().item()
+
+        if mismatches <= 1:
+            correct_count += 1
+
+    accuracy = correct_count / n_samples
+    logger.info(f"[{k}] Rollout off-by-one Accuracy: {100*accuracy:.2f}%")
+
+    return accuracy
+
+
 METRIC_REGISTRY: Dict[str, Callable] = {
     "step_accuracy": metric_step_accuracy,
     "full_sample_accuracy": metric_full_sample_accuracy,
+    "off_by_one_accuracy": metric_full_sample_off_by_one_accuracy,
 }
 
 

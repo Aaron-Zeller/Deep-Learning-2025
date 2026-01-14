@@ -291,7 +291,6 @@ class Trainer:
         return out
 
     def val_full_sample_epoch(self, k: int, epoch: int) -> float:
-        device = next(self.model.parameters()).device
         self.model.eval()
         self.head.eval()
 
@@ -338,7 +337,6 @@ class Trainer:
             if final_pred_str.strip() == final_gt_str.strip():
                 correct_count += 1
 
-        print(correct_count, n_samples)
         accuracy = correct_count / n_samples
         logger.info(f"[{k}] Rollout Accuracy: {100*accuracy:.2f}%")
 
