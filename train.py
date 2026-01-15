@@ -290,60 +290,50 @@ class Trainer:
 
         return out
 
-    def val_full_sample_epoch(self, k: int, epoch: int) -> float:
+    def unroll_evaluation(self, k: int) -> list[tuple[Tensor, Tensor]]:
         self.model.eval()
         self.head.eval()
 
         val_dataset = self.val_datasets[k]
         n_samples = len(val_dataset.data)
-        correct_count = 0
+        results = []
 
         # unrolling steps
         steps_to_rollout = val_dataset.seq_len - 1
 
-        pbar = tqdm(range(n_samples), desc=f"[{k}] Rollout Epoch {epoch}")
+        pbar = tqdm(range(n_samples), desc=f"[{k}] Rollout")
 
         for idx in pbar:
             sample_digits = val_dataset.data[idx]
             a = val_dataset._digits_to_string(sample_digits[0])
             b = val_dataset._digits_to_string(sample_digits[1])
 
-            gt_steps = val_dataset.run_algorithm(a, b)
+            gt_steps = val_dataset.run_algorithm(a, b, val_dataset.separate_carry)
 
             current_grid = torch.ones(
                 (1, val_dataset.h, val_dataset.w), dtype=torch.long
             ) * val_dataset.token_to_idx.index("\n")
+            final_grid = current_grid.clone()
 
             # Parse the first step string
             s = gt_steps[0]
+            t = gt_steps[-1]
             for i in range(val_dataset.h):
                 for j in range(val_dataset.w - 1):  # \n already filled
                     current_grid[0, i, j] = val_dataset.token_to_idx.index(s.split("\n")[i][j])
+                    final_grid[0, i, j] = val_dataset.token_to_idx.index(t.split("\n")[i][j])
 
             current_grid = self.fabric.to_device(current_grid)
+            final_grid = self.fabric.to_device(final_grid)
 
             for _ in range(steps_to_rollout):
                 with torch.no_grad():
                     _, _, y_pred, _, _, _, _, _, _ = self.forward((current_grid, current_grid))
-
                     out = self.head.step(current_grid, y_pred)
-
-                    # The prediction becomes the input for the next step
                     current_grid = out
 
-            final_pred_str = val_dataset.to_string(current_grid[0])
-            final_gt_str = gt_steps[-1]
-
-            if final_pred_str.strip() == final_gt_str.strip():
-                correct_count += 1
-
-        accuracy = correct_count / n_samples
-        logger.info(f"[{k}] Rollout Accuracy: {100*accuracy:.2f}%")
-
-        if self.log_writer:
-            self.log_writer.add_scalar(f"val/{k}_rollout_accuracy", accuracy, epoch)
-
-        return accuracy
+            results.append((current_grid.cpu(), final_grid.cpu()))  # predicted, ground truth
+        return results
 
     def extract_gradients(self) -> list[Tensor]:
         grads = []
