@@ -1,5 +1,6 @@
 import logging
 import math
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -273,6 +274,14 @@ class Trainer:
         if self.log_writer:
             self.log_writer.add_scalar(f"val/{k}_loss", avg_loss, epoch)
             self.log_writer.add_scalar(f"val/{k}_accuracy", avg_accuracy, epoch)
+
+            with open(self.output_dir / "val_log.txt", "a") as f:
+                f.write(f"[{k}] Epoch {epoch}: Val Loss: {avg_loss:.10f}\n")
+                f.write(f"[{k}] Epoch {epoch}: Val Accuracy: {avg_accuracy:.10f}\n")
+
+                # A bit paranoid ...
+                f.flush()
+                os.fsync(f.fileno())
 
         return avg_loss, avg_accuracy
 
