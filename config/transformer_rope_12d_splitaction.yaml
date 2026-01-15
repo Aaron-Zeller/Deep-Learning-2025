@@ -1,19 +1,15 @@
 defaults:
   - config
-  - blocks@model.lens: lens_3_3_3_3_1
-  - override model: lens_transformer
+  - override model: rope_encoding
   - override head: split_action_distribution
   - _self_
 
-name: lens_transformer_3_3_3_3_1_nomask_proj_grad_splitaction
+name: transformer_rope_12d_splitaction
 n_epochs: 1000
-proj_grad: true
+proj_grad: false
 mix_grad: false
 val_min_digits: 1
 val_max_digits: 18
-
-model:
-  mask_type: none
 
 head:
   n_registers: 0
