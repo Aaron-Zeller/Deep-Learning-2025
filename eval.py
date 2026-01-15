@@ -3,6 +3,7 @@ import sys
 import argparse
 from pathlib import Path
 from typing import List, Dict, Callable
+from tqdm import tqdm
 
 import torch
 from omegaconf import OmegaConf
@@ -16,22 +17,52 @@ logger = logging.getLogger(__name__)
 
 
 # To add a new metric, define a function here and add it to the METRIC_REGISTRY.
-# Signature: (trainer, k_idx, epoch) -> float
-def metric_step_accuracy(trainer: Trainer, k: int, epoch: int = 0) -> float:
+# Signature: (trainer, k_idx, epoch, unrolled_grid) -> float
+def metric_step_accuracy(trainer: Trainer, k: int, epoch: int = 0, unrolled_grid=None) -> float:
     """Wrapper for the existing per-step validation."""
+    if hasattr(trainer, "val_k_epoch"):
+        _, acc = trainer.val_k_epoch(k, 0)
+        return acc
     _, acc = trainer.val_epoch(0)
     return acc
 
 
-def metric_full_sample_accuracy(trainer: Trainer, k: int, epoch: int = 0) -> float:
-    """Wrapper for full step accuracy over entire sample sequence."""
-    return trainer.val_full_sample_epoch(k=k, epoch=epoch)
+def metric_full_sample_accuracy(trainer: Trainer, k: int, epoch: int = 0, unrolled_grid=None) -> float:
+    """Exact Match on unrolled grid."""
+    if not unrolled_grid:
+        return 0.0
+
+    correct = 0
+    total = len(unrolled_grid)
+
+    for pred_grid, gt_grid in unrolled_grid:
+        if torch.equal(pred_grid, gt_grid):
+            correct += 1
+
+    return correct / total
+
+
+def metric_full_sample_off_by_one(trainer: Trainer, k: int, epoch: int = 0, unrolled_grid=None) -> float:
+    """Full step accuracy allowing off-by-one errors."""
+    if not unrolled_grid:
+        return 0.0
+
+    pass_count = 0
+    total = len(unrolled_grid)
+
+    for pred_grid, gt_grid in unrolled_grid:
+        if (torch.abs(pred_grid - gt_grid) <= 1).all():
+            pass_count += 1
+
+    return pass_count / total
 
 
 METRIC_REGISTRY: Dict[str, Callable] = {
     "step_accuracy": metric_step_accuracy,
     "full_sample_accuracy": metric_full_sample_accuracy,
+    "full_sample_off_by_one": metric_full_sample_off_by_one,
 }
+ROLLOUT_METRICS = {"full_sample_accuracy", "full_sample_off_by_one"}
 
 
 class PrintSuppressor:
@@ -100,35 +131,49 @@ def run_evaluation(config_path: str):
 
     output_buffer = []
 
-    for metric_name in cfg.metrics:
-        if metric_name not in METRIC_REGISTRY:
-            logger.warning(f"Metric '{metric_name}' not found in registry.")
-            continue
+    # all_results[metric_name][model_name][digit] = score
+    all_results = {m: {} for m in cfg.metrics if m in METRIC_REGISTRY}
 
-        metric_fn = METRIC_REGISTRY[metric_name]
+    for model_entry in cfg.models:
+        # [name, path, ckpt]
+        m_name, m_path, m_ckpt = model_entry[0], model_entry[1], str(model_entry[2])
+        m_ckpt = f"ckpt_{m_ckpt}.pth"
+
+        # Initialize this model in the results dict for all metrics
+        for m in all_results:
+            all_results[m][m_name] = {}
+
+        logger.info(f"Evaluating Model: {m_name}")
+        for d in digit_range:
+            with PrintSuppressor():
+                trainer = load_trainer(m_path, m_ckpt, n_samples, d)
+
+                unrolled_grid = None
+                if any(m in ROLLOUT_METRICS for m in cfg.metrics):
+                    unrolled_grid = trainer.unroll_evaluation(k=d)
+
+                for metric_name in cfg.metrics:
+                    if metric_name not in METRIC_REGISTRY:
+                        continue
+
+                    metric_fn = METRIC_REGISTRY[metric_name]
+                    score = metric_fn(trainer, k=d, epoch=0, unrolled_grid=unrolled_grid)
+
+                    all_results[metric_name][m_name][d] = score
+
+            log_parts = [f"{m}={all_results[m][m_name][d]:.2%}" for m in cfg.metrics if m in all_results]
+            logger.info(f"  Digits {d}: " + ", ".join(log_parts))
+
+            del trainer
+            torch.cuda.empty_cache()
+
+    # Metric extraction for output
+    for metric_name in cfg.metrics:
+
         logger.info(f"\n{'='*10} Evaluating: {metric_name} {'='*10}")
 
-        results = {}  # {model_name: {digit: score}}
-
-        for model_entry in cfg.models:
-            # [name, path, ckpt]
-            m_name, m_path, m_ckpt = model_entry[0], model_entry[1], str(model_entry[2])
-
-            m_ckpt = f"ckpt_{m_ckpt}.pth"
-
-            results[m_name] = {}
-
-            logger.info(f"Evaluating Model: {m_name}")
-
-            for d in digit_range:
-                with PrintSuppressor():
-                    trainer = load_trainer(m_path, m_ckpt, n_samples, d)
-                    score = metric_fn(trainer, k=d, epoch=0)
-
-                results[m_name][d] = score
-                logger.info(f"  Digits {d}: {score:.2%}")
-
-                del trainer
+        # {model_name: {digit: score}}
+        results = all_results[metric_name]
 
         headers = ["Model"] + [f"{d}-digits" for d in digit_range]
         table_rows = []
@@ -151,7 +196,7 @@ def run_evaluation(config_path: str):
             row = [m_name]
             for d in digit_range:
                 val = results[m_name].get(d, 0.0)
-                row.append(f"{val*100:.1f}")  # Number only for latex, usually better
+                row.append(f"{val*100:.1f}")
             latex_rows.append(row)
 
         latex_headers = ["Model"] + [str(d) for d in digit_range]

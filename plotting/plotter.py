@@ -36,7 +36,78 @@ class Plotter:
         # Plotting settings
         plt.rcParams["figure.dpi"] = 200
 
-    def plot_probabilities(self, trace: InferenceTrace, filename: str = "token_probs_grid.pdf"):
+    def plot_probabilities_split(self, trace: InferenceTrace, filename: str = "split_probs.pdf"):
+        """Plot split head probabilities showing a single pdf with left column
+        plotting the location probabilities and right the value probabilities.
+
+        Args:
+            trace: Inference trace containing model predictions.
+            filename (str, optional): Output PDF filename. Defaults to "split_probs.pdf".
+        """
+        pdf_path = self.plot_dir / filename
+
+        steps = trace.completion.steps
+        y_preds = trace.completion.y_preds  # [(val_logits, pos_logits)]
+
+        n_steps = len(y_preds)
+        h, w = self.dataset.h, self.dataset.w
+        vocab = self.dataset.token_to_idx
+        n_vocab = len(vocab)
+
+        figsize = (12, 3 * n_steps)
+        fig, axes = plt.subplots(n_steps, 2, figsize=figsize, squeeze=False)
+
+        for step_idx, (y_pred, current_step_tensor) in enumerate(zip(y_preds, steps)):
+            v_logits, loc_logits = y_pred  # (b, vocab), (b, h * w)
+
+            # Location Prediction
+            ax_loc = axes[step_idx, 0]
+            loc_probs = torch.softmax(loc_logits, dim=-1)[0]
+            loc_map = rearrange(loc_probs, "(h w) -> h w", h=h, w=w).cpu().numpy()
+            im_loc = ax_loc.imshow(loc_map, cmap="magma", vmin=0, vmax=1)
+
+            # Overlay grid text before prediction
+            current_state = current_step_tensor[0]
+            grid_str = self.dataset.to_string(current_state)
+            overlay_grid_text(ax_loc, loc_map, grid_str, 0, 1)
+
+            ax_loc.set_title(f"Step {step_idx}: Target Location", fontsize=10, fontweight="bold")
+            ax_loc.set_xticks([])
+            ax_loc.set_yticks([])
+
+            # Value Prediction
+            ax_val = axes[step_idx, 1]
+            v_probs = torch.softmax(v_logits, dim=-1)[0].cpu().numpy()
+
+            x_indices = range(n_vocab)
+            x_labels = [str(t) for t in vocab]
+            bars = ax_val.bar(x_indices, v_probs, color="skyblue", edgecolor="black")
+
+            # Highlight maximum predicted value
+            chosen_idx = v_probs.argmax()
+            bars[chosen_idx].set_color("orange")
+            bars[chosen_idx].set_edgecolor("black")
+
+            ax_val.set_title(f"Step {step_idx}: Value Distribution", fontsize=10, fontweight="bold")
+            ax_val.set_ylim(0, 1.1)
+            ax_val.set_xticks(x_indices)
+            ax_val.set_xticklabels(x_labels, fontsize=8)
+
+            score = v_probs[chosen_idx]
+            ax_val.text(
+                chosen_idx, score + 0.02, f"{score:.2f}", ha="center", va="bottom", fontsize=8, fontweight="bold"
+            )
+
+        plt.suptitle("Split Head Predictions: Location vs Value", fontsize=16)
+        plt.tight_layout()
+
+        with PdfPages(pdf_path) as pdf:
+            pdf.savefig(fig)
+            plt.close(fig)
+
+        print(f"Saved split probability summary to {pdf_path}")
+
+    def plot_probabilities_global(self, trace: InferenceTrace, filename: str = "token_probs_grid.pdf"):
         """Plot a grid where Y-axis is Time (Steps) and X-axis is Token Class.
         Normalized over 3D grid (H, W, Vocab) at each step.
         Create a pdf with one page showing the full grid.
@@ -114,12 +185,18 @@ class Plotter:
         n_steps = trace.n_steps
         h, w = self.dataset.h, self.dataset.w
 
+        is_split = hasattr(self.trainer.head, "n_action_tokens")
+
         with PdfPages(pdf_path) as pdf:
             for step_idx in range(n_steps - 1):  # last step doesn't have attention
                 current_step = trace.completion.steps[step_idx][0]
                 grid_str = self.dataset.to_string(current_step)
                 attentions = trace.completion.attentions[step_idx]  # (layers, b, heads, seq_len, seq_len)
                 i, j = trace.completion.indices[step_idx]
+
+                if is_split:
+                    n_action_tokens = self.trainer.head.n_action_tokens
+                    attentions = attentions[..., n_action_tokens:, n_action_tokens:]
 
                 fig, axs = plt.subplots(
                     n_layers,
@@ -369,7 +446,10 @@ def main(args):
 
     if args.plot_probabilities:
         print("Plotting Probabilities...")
-        plotter.plot_probabilities(trace)
+        if hasattr(trainer.head, "n_action_tokens"):
+            plotter.plot_probabilities_split(trace)
+        else:
+            plotter.plot_probabilities_global(trace)
 
     if args.plot_attention:
         print("Plotting Attention...")

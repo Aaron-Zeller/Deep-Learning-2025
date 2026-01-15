@@ -4,7 +4,7 @@ defaults:
   - override model: lens_transformer
   - _self_
 
-name: lens_transformer_7_5_3_1_softmask_proj_grad
+name: lens_transformer_7_5_3_1_softmask_3_4_dig
 n_epochs: 1000
 proj_grad: false
 mix_grad: true

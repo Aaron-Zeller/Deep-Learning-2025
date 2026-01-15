@@ -2,26 +2,26 @@ defaults:
   - config
   - blocks@model.lens: lens_3_3_3_3_1
   - override model: lens_transformer
-  - override head: split_action_distribution
+  - override head: global_action_distribution
   - _self_
 
-name: lens_transformer_3_3_3_3_1_nomask_proj_grad_splitaction
+name: 33331_soft_mix_global_sep
 n_epochs: 1000
-proj_grad: true
-mix_grad: false
+proj_grad: false
+mix_grad: true
 val_min_digits: 1
 val_max_digits: 18
 
 model:
-  mask_type: none
+  mask_type: soft
 
 head:
   n_registers: 0
-  beta: 7.0
 
 dataset:
   n_samples: 10000
   max_digits: 3
+  separate_carry: true
 
 logging:
   save_every_n_epochs: 3

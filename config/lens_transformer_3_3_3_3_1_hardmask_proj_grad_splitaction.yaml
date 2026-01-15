@@ -15,6 +15,10 @@ val_max_digits: 18
 model:
   mask_type: hard
 
+head:
+  n_registers: 0
+  beta: 7.0
+
 dataset:
   n_samples: 10000
   max_digits: 3
