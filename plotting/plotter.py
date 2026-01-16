@@ -1,7 +1,10 @@
 from pathlib import Path
 import torch
+import torch.nn.functional as F
 import matplotlib.pyplot as plt
+from hydra_zen import instantiate
 from matplotlib.backends.backend_pdf import PdfPages
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 from einops import rearrange, einsum
 from typing import Any
 from train import Trainer
@@ -10,6 +13,9 @@ from itertools import product
 import numpy as np
 import sys
 import argparse
+import tempfile
+import subprocess
+import shutil
 
 from traces import InferenceTrace
 from utils import pretty_print_sample, overlay_grid_text
@@ -228,12 +234,18 @@ class Plotter:
     def plot_layer_activations(self, trace: InferenceTrace, filename: str = "activations.pdf"):
         """
         Plots the L2 Energy of activations to show where features are active.
+        Also saves as an MP4 video at 5fps.
 
         Args:
             trace: Inference trace with activations.
             filename: Filename for the output PDF. Defaults to "activations.pdf".
         """
         pdf_path = self.plot_dir / filename
+        video_path = self.plot_dir / filename.replace(".pdf", ".mp4")
+
+        # Create temporary directory for frames
+        temp_dir = tempfile.mkdtemp()
+        frame_paths = []
 
         layer_names = list(trace.completion.activations[0].keys())  # assume same
         n_layers = len(layer_names)
@@ -241,6 +253,8 @@ class Plotter:
         with PdfPages(pdf_path) as pdf:
             for step_idx in range(trace.n_steps - 1):
                 activations = trace.completion.activations[step_idx]
+                current_step = trace.completion.steps[step_idx][0]
+                grid_str = self.dataset.to_string(current_step)
 
                 fig, axes = plt.subplots(1, n_layers, figsize=(3 * n_layers, 3))
                 if n_layers == 0:
@@ -252,16 +266,332 @@ class Plotter:
 
                     energy_map = torch.norm(act, p=2, dim=1).squeeze()  # (H, W)
 
-                    im = ax.imshow(energy_map, cmap=COLOR)
+                    # Normalize energy map for visualization
+                    vmin, vmax = 0, energy_map.max().item()
+
+                    im = ax.imshow(energy_map, cmap=COLOR, vmin=vmin, vmax=vmax)
+
+                    # Overlay grid text on activation map
+                    overlay_grid_text(ax, energy_map.cpu(), grid_str, vmin, vmax)
+
                     ax.set_title(f"{name}\n(L2 Energy)")
                     ax.axis("off")
 
                 plt.suptitle(f"Layer Activations at Step {step_idx}", fontsize=16)
                 plt.tight_layout()
+
+                # Save to PDF
                 pdf.savefig(fig)
+
+                # Save frame for video
+                frame_path = Path(temp_dir) / f"frame_{step_idx:04d}.png"
+                fig.savefig(frame_path, dpi=100, bbox_inches="tight")
+                frame_paths.append(frame_path)
+
                 plt.close(fig)
 
         print(f"Saved activations to {pdf_path}")
+
+        # Create video using ffmpeg
+        if frame_paths:
+            try:
+                # Use ffmpeg to create video at 5fps
+                ffmpeg_cmd = [
+                    "ffmpeg",
+                    "-y",  # Overwrite output file if it exists
+                    "-framerate",
+                    "5",  # Input framerate
+                    "-pattern_type",
+                    "glob",
+                    "-i",
+                    str(Path(temp_dir) / "frame_*.png"),
+                    "-c:v",
+                    "libx264",
+                    "-pix_fmt",
+                    "yuv420p",
+                    "-vf",
+                    "pad=ceil(iw/2)*2:ceil(ih/2)*2",  # Ensure dimensions are even
+                    str(video_path),
+                ]
+                subprocess.run(ffmpeg_cmd, check=True, capture_output=True)
+                print(f"Saved activations video to {video_path}")
+            except subprocess.CalledProcessError as e:
+                print(f"Warning: Failed to create video: {e.stderr.decode()}")
+            except FileNotFoundError:
+                print("Warning: ffmpeg not found. Install ffmpeg to generate video.")
+            finally:
+                # Clean up temporary files
+                shutil.rmtree(temp_dir)
+
+    def plot_mask(self, trace: InferenceTrace, filename: str = "mask.pdf"):
+        """
+        Plots the attention mask from LensTransformer showing which positions are selected.
+        Also saves as an MP4 video at 5fps.
+
+        Args:
+            trace: Inference trace with extra outputs containing mask.
+            filename: Filename for the output PDF. Defaults to "mask.pdf".
+        """
+        pdf_path = self.plot_dir / filename
+        video_path = self.plot_dir / filename.replace(".pdf", ".mp4")
+
+        # Create temporary directory for frames
+        temp_dir = tempfile.mkdtemp()
+        frame_paths = []
+
+        h, w = self.dataset.h, self.dataset.w
+
+        # Check if we have mask data
+        if not trace.completion.steps:
+            print("No steps found in trace")
+            return
+
+        with PdfPages(pdf_path) as pdf:
+            for step_idx in range(trace.n_steps - 1):
+                current_step = trace.completion.steps[step_idx][0]
+                grid_str = self.dataset.to_string(current_step)
+
+                # Get mask from the forward pass
+                # We need to run a forward pass to get the mask
+                with torch.no_grad():
+                    x_in = trace.completion.steps[step_idx]
+                    src_emb, tgt_emb = self.trainer.model.prepare_tokens(x_in, x_in)
+                    _, _, _, _, _, extra = self.trainer.model(src_emb, tgt_emb)
+                    mask = extra["mask"]  # (b, h*w, 1)
+
+                # Reshape mask to grid
+                mask_grid = rearrange(mask[0, :, 0], "(h w) -> h w", h=h, w=w).cpu()
+
+                fig, ax = plt.subplots(1, 1, figsize=(6, 6))
+
+                # Plot mask heatmap
+                im = ax.imshow(mask_grid, cmap=COLOR, vmin=0, vmax=1)
+
+                # Overlay grid text
+                overlay_grid_text(ax, mask_grid, grid_str, 0, 1)
+
+                # Add colorbar
+                cbar = plt.colorbar(im, ax=ax)
+                cbar.set_label("Mask Value (0=masked, 1=selected)", rotation=270, labelpad=15)
+
+                ax.set_title(f"Step {step_idx}: Attention Mask", fontsize=14, fontweight="bold")
+                ax.set_xticks([])
+                ax.set_yticks([])
+
+                plt.tight_layout()
+
+                # Save to PDF
+                pdf.savefig(fig)
+
+                # Save frame for video
+                frame_path = Path(temp_dir) / f"frame_{step_idx:04d}.png"
+                fig.savefig(frame_path, dpi=100, bbox_inches="tight")
+                frame_paths.append(frame_path)
+
+                plt.close(fig)
+
+        print(f"Saved mask visualization to {pdf_path}")
+
+        # Create video using ffmpeg
+        if frame_paths:
+            try:
+                ffmpeg_cmd = [
+                    "ffmpeg",
+                    "-y",
+                    "-framerate",
+                    "5",
+                    "-pattern_type",
+                    "glob",
+                    "-i",
+                    str(Path(temp_dir) / "frame_*.png"),
+                    "-c:v",
+                    "libx264",
+                    "-pix_fmt",
+                    "yuv420p",
+                    "-vf",
+                    "pad=ceil(iw/2)*2:ceil(ih/2)*2",
+                    str(video_path),
+                ]
+                subprocess.run(ffmpeg_cmd, check=True, capture_output=True)
+                print(f"Saved mask video to {video_path}")
+            except subprocess.CalledProcessError as e:
+                print(f"Warning: Failed to create video: {e.stderr.decode()}")
+            except FileNotFoundError:
+                print("Warning: ffmpeg not found. Install ffmpeg to generate video.")
+            finally:
+                # Clean up temporary files
+                shutil.rmtree(temp_dir)
+
+    def plot_attention_sensitivity(self, trace: InferenceTrace, filename: str = "attention_sensitivity.pdf"):
+        """Plot sensitivity of attention weights w.r.t. input embeddings.
+
+        Computes gradients of attention patterns from the current prediction
+        position with respect to input embeddings, scaled by attention values.
+        This reveals what input regions influence the attention mechanism after
+        the lens CNN transformation.
+
+        Args:
+            trace: Inference trace containing model predictions and steps.
+            filename: Output PDF filename. Also creates corresponding .mp4 video.
+        """
+        pdf_path = self.plot_dir / filename
+        video_path = self.plot_dir / filename.replace(".pdf", ".mp4")
+
+        # Create temporary directory for frames
+        temp_dir = tempfile.mkdtemp()
+        frame_paths = []
+
+        n_registers = self.trainer.head.n_registers
+        h, w = self.dataset.h, self.dataset.w
+        n_steps = trace.n_steps
+
+        # Get attention info from first step
+        with torch.no_grad():
+            x_in_test = trace.completion.steps[0]
+            src_emb_test, tgt_emb_test = self.trainer.model.prepare_tokens(x_in_test, x_in_test)
+            _, _, enc_attns_test, _, _, _ = self.trainer.model(src_emb_test, tgt_emb_test)
+            n_layers = enc_attns_test.shape[0]
+            n_heads = enc_attns_test.shape[2]
+
+        # Check for split head architecture
+        is_split = hasattr(self.trainer.head, "n_action_tokens")
+
+        with PdfPages(pdf_path) as pdf:
+            for step_idx in range(n_steps - 1):  # last step doesn't have attention
+                print(f"Processing attention sensitivity for step {step_idx + 1}/{n_steps - 1}...")
+
+                current_step = trace.completion.steps[step_idx][0]
+                grid_str = self.dataset.to_string(current_step)
+                i, j = trace.completion.indices[step_idx]
+
+                # Forward pass with gradients enabled
+                with torch.set_grad_enabled(True):
+                    self.trainer.model.eval()
+                    self.trainer.head.eval()
+
+                    x_in = trace.completion.steps[step_idx]
+                    src_emb, tgt_emb = self.trainer.model.prepare_tokens(x_in, x_in)
+                    src_emb.retain_grad()
+
+                    enc_out, _, enc_attns, _, _, extra = self.trainer.model(src_emb, tgt_emb)
+
+                    # Handle split head architecture
+                    if is_split:
+                        n_action_tokens = self.trainer.head.n_action_tokens
+                        enc_attns = enc_attns[..., n_action_tokens:, n_action_tokens:]
+
+                    # Create figure with size adjusted for grid dimensions
+                    # Scale subplot size based on grid width for better visibility
+                    subplot_width = max(3, w * 0.5)  # At least 3 inches, scales with width
+                    subplot_height = max(3, h * 0.5)  # At least 3 inches, scales with height
+                    fig, axs = plt.subplots(
+                        n_layers,
+                        n_heads,
+                        figsize=(n_heads * subplot_width, n_layers * subplot_height),
+                        squeeze=False,
+                    )
+
+                    for lay in range(n_layers):
+                        for head in range(n_heads):
+                            # Get attention from position (i, j) to all other positions
+                            attn_from_ij = enc_attns[lay, 0, head, n_registers + i * w + j, n_registers:]
+
+                            # Compute sensitivity map
+                            sensitivity_map = torch.zeros(h, w, device=src_emb.device)
+
+                            for k in range(h * w):
+                                attn_weight = attn_from_ij[k]
+
+                                # Skip if attention weight is very small
+                                if attn_weight.item() < 1e-6:
+                                    continue
+
+                                # Compute gradient
+                                attn_weight.backward(retain_graph=True)
+
+                                # Get gradient and compute L2 norm across embedding dimension
+                                grad_norm = torch.norm(src_emb.grad[0], p=2, dim=-1)  # (h, w)
+
+                                # Scale by attention value and accumulate
+                                sensitivity_map += attn_weight.item() * grad_norm
+
+                                # Clear gradients for next iteration
+                                src_emb.grad.zero_()
+
+                            # Normalize for visualization
+                            max_val = sensitivity_map.max()
+                            if max_val > 1e-8:
+                                sensitivity_map = sensitivity_map / max_val
+                            else:
+                                sensitivity_map = torch.zeros_like(sensitivity_map)
+
+                            # Plot
+                            ax = axs[lay, head]
+                            im = ax.imshow(sensitivity_map.cpu(), cmap=COLOR, vmin=0, vmax=1, aspect='equal')
+
+                            # Overlay grid text
+                            overlay_grid_text(ax, sensitivity_map.cpu(), grid_str, 0, 1, (i, j))
+
+                            # Formatting
+                            title_fontsize = max(8, min(12, 10 - w // 10))  # Adjust font size for wider grids
+                            ax.set_title(f"Layer {lay+1} Head {head+1}", fontsize=title_fontsize)
+                            ax.set_xticks([])
+                            ax.set_yticks([])
+
+                            # Add colorbar with adjusted size
+                            divider = make_axes_locatable(ax)
+                            cax = divider.append_axes("right", size="5%", pad=0.05)
+                            fig.colorbar(im, cax=cax)
+
+                # Adjust title font size for wider grids
+                title_fontsize = max(12, min(16, 16 - w // 10))
+                plt.suptitle(
+                    f"Attention Sensitivity at Step {step_idx}, Position ({i},{j})",
+                    fontsize=title_fontsize,
+                )
+                plt.tight_layout(rect=[0, 0, 1, 0.98])  # Leave space for suptitle
+
+                # Save to PDF
+                pdf.savefig(fig)
+
+                # Save frame for video
+                frame_path = Path(temp_dir) / f"frame_{step_idx:04d}.png"
+                fig.savefig(frame_path, dpi=100, bbox_inches="tight")
+                frame_paths.append(frame_path)
+
+                plt.close(fig)
+
+        print(f"Saved attention sensitivity to {pdf_path}")
+
+        # Create video using ffmpeg
+        if frame_paths:
+            try:
+                ffmpeg_cmd = [
+                    "ffmpeg",
+                    "-y",
+                    "-framerate",
+                    "5",
+                    "-pattern_type",
+                    "glob",
+                    "-i",
+                    str(Path(temp_dir) / "frame_*.png"),
+                    "-c:v",
+                    "libx264",
+                    "-pix_fmt",
+                    "yuv420p",
+                    "-vf",
+                    "pad=ceil(iw/2)*2:ceil(ih/2)*2",
+                    str(video_path),
+                ]
+                subprocess.run(ffmpeg_cmd, check=True, capture_output=True)
+                print(f"Saved attention sensitivity video to {video_path}")
+            except subprocess.CalledProcessError as e:
+                print(f"Warning: Failed to create video: {e.stderr.decode()}")
+            except FileNotFoundError:
+                print("Warning: ffmpeg not found. Install ffmpeg to generate video.")
+            finally:
+                # Clean up temporary files
+                shutil.rmtree(temp_dir)
 
     def plot_conv_kernels(self, filename: str = "kernels.pdf"):
         """Plot all Conv2D kernels from the model into a multi-page PDF. Average over
@@ -412,6 +742,170 @@ class Plotter:
 
         print(f"Saved semantic kernels to {pdf_path}")
 
+    def plot_input_sensitivity(self, trace: InferenceTrace, filename: str = "input_sensitivity.pdf"):
+        """Plot sensitivity of the final output prediction with respect to each input position.
+        Uses gradient-based attribution to show which input positions most influence the prediction.
+        Also saves as an MP4 video at 5fps.
+
+        Args:
+            trace: Inference trace containing model predictions.
+            filename: Filename for the output PDF. Defaults to "input_sensitivity.pdf".
+        """
+        pdf_path = self.plot_dir / filename
+        video_path = self.plot_dir / filename.replace(".pdf", ".mp4")
+
+        # Create temporary directory for frames
+        temp_dir = tempfile.mkdtemp()
+        frame_paths = []
+
+        steps = trace.completion.steps
+        y_preds = trace.completion.y_preds
+        n_steps = len(y_preds)
+        h, w = self.dataset.h, self.dataset.w
+        vocab_size = self.dataset.vocab_size()
+
+        with PdfPages(pdf_path) as pdf:
+            for step_idx in range(n_steps):
+                current_step = steps[step_idx][0]
+                y_pred = y_preds[step_idx]
+
+                # Get the predicted output cell
+                if isinstance(y_pred, tuple):
+                    # Split head case: (val_logits, pos_logits)
+                    v_logits, loc_logits = y_pred
+                    y_pred_flat = torch.zeros(v_logits.shape[0], h * w * vocab_size, device=v_logits.device)
+
+                    # Compute outer product to get full distribution
+                    loc_probs = torch.softmax(loc_logits, dim=-1)  # (b, h*w)
+                    v_probs = torch.softmax(v_logits, dim=-1)  # (b, vocab)
+
+                    for b in range(v_logits.shape[0]):
+                        for pos_idx in range(h * w):
+                            for v_idx in range(vocab_size):
+                                flat_idx = pos_idx * vocab_size + v_idx
+                                y_pred_flat[b, flat_idx] = loc_probs[b, pos_idx] * v_probs[b, v_idx]
+                else:
+                    # Global head case
+                    y_pred_flat = rearrange(y_pred, "b (h w) v -> b (h w v)", h=h, w=w)
+
+                max_indices = y_pred_flat.argmax(dim=1)
+                batch_idx = 0
+                i, j, v = torch.unravel_index(max_indices[batch_idx : batch_idx + 1], (h, w, vocab_size))
+                i, j, v = i.item(), j.item(), v.item()
+
+                # Run forward pass with gradients enabled
+                x_in = steps[step_idx]
+
+                # Enable gradient computation
+                with torch.set_grad_enabled(True):
+                    self.trainer.model.eval()  # Keep in eval to avoid dropout/etc
+                    self.trainer.head.eval()
+
+                    # Prepare embeddings
+                    src_emb, tgt_emb = self.trainer.model.prepare_tokens(x_in, x_in)
+
+                    # Retain gradients on source embeddings
+                    src_emb.retain_grad()
+
+                    # Forward pass through model
+                    enc_out, dec_out, enc_attns, dec_self_attns, dec_cross_attns, extra = self.trainer.model(
+                        src_emb, tgt_emb
+                    )
+
+                    # Head prediction
+                    y_pred = self.trainer.head(dec_out if dec_out is not None else enc_out)
+
+                    # Get the logit at the predicted position
+                    if isinstance(y_pred, tuple):
+                        v_logits, loc_logits = y_pred
+                        target_logit = loc_logits[batch_idx, i * w + j] + v_logits[batch_idx, v]
+                    else:
+                        output_reshaped = rearrange(y_pred, "b (h w) v -> b h w v", h=h, w=w)
+                        target_logit = output_reshaped[batch_idx, i, j, v]
+
+                    # Compute gradients with respect to source embeddings
+                    target_logit.backward()
+
+                    # Get gradients with respect to input embeddings
+                    input_grad = src_emb.grad
+
+                # Aggregate gradients per position (L2 norm across embedding dimension)
+                sensitivity = torch.norm(input_grad[batch_idx], p=2, dim=-1).cpu().numpy()
+
+                # Normalize for visualization
+                sensitivity = (sensitivity - sensitivity.min()) / (sensitivity.max() - sensitivity.min() + 1e-8)
+
+                # Create visualization with adaptive sizing
+                fig_width = max(6, w * 0.8)  # Scale with grid width
+                fig_height = max(6, h * 0.8)  # Scale with grid height
+                fig, ax = plt.subplots(1, 1, figsize=(fig_width, fig_height))
+
+                # Plot sensitivity heatmap
+                im = ax.imshow(sensitivity, cmap=COLOR, vmin=0, vmax=1, aspect='equal')
+
+                # Overlay grid text
+                grid_str = self.dataset.to_string(current_step)
+                overlay_grid_text(ax, sensitivity, grid_str, 0, 1, (i, j))
+
+                # Add colorbar with better layout
+                divider = make_axes_locatable(ax)
+                cax = divider.append_axes("right", size="5%", pad=0.1)
+                cbar = fig.colorbar(im, cax=cax)
+                cbar.set_label("Sensitivity (normalized)", rotation=270, labelpad=15)
+
+                # Title with adaptive font size
+                predicted_token = self.dataset.token_to_idx[v]
+                title_fontsize = max(10, min(14, 14 - w // 10))
+                ax.set_title(
+                    f"Step {step_idx}: Input Sensitivity\nPredicted: '{predicted_token}' at ({i},{j})",
+                    fontsize=title_fontsize,
+                    fontweight="bold",
+                )
+                ax.set_xticks([])
+                ax.set_yticks([])
+
+                plt.tight_layout()
+                pdf.savefig(fig)
+
+                # Save frame for video
+                frame_path = Path(temp_dir) / f"frame_{step_idx:04d}.png"
+                fig.savefig(frame_path, dpi=100, bbox_inches="tight")
+                frame_paths.append(frame_path)
+
+                plt.close(fig)
+
+        print(f"Saved input sensitivity to {pdf_path}")
+
+        # Create video using ffmpeg
+        if frame_paths:
+            try:
+                ffmpeg_cmd = [
+                    "ffmpeg",
+                    "-y",
+                    "-framerate",
+                    "5",
+                    "-pattern_type",
+                    "glob",
+                    "-i",
+                    str(Path(temp_dir) / "frame_*.png"),
+                    "-c:v",
+                    "libx264",
+                    "-pix_fmt",
+                    "yuv420p",
+                    "-vf",
+                    "pad=ceil(iw/2)*2:ceil(ih/2)*2",
+                    str(video_path),
+                ]
+                subprocess.run(ffmpeg_cmd, check=True, capture_output=True)
+                print(f"Saved input sensitivity video to {video_path}")
+            except subprocess.CalledProcessError as e:
+                print(f"Warning: Failed to create video: {e.stderr.decode()}")
+            except FileNotFoundError:
+                print("Warning: ffmpeg not found. Install ffmpeg to generate video.")
+            finally:
+                # Clean up temporary files
+                shutil.rmtree(temp_dir)
+
 
 def main(args):
     model_dir = Path(args.model_dir)
@@ -431,10 +925,11 @@ def main(args):
     trainer = Trainer(cfg, model_dir)
     trainer.model.eval()
 
-    dataset = trainer.val_dataset
+    cfg.dataset.max_digits = args.n_digits
+    dataset = instantiate(cfg.dataset)
     plotter = Plotter(dataset, trainer, model_dir)
 
-    sample = trainer.fabric.to_device(dataset.get_example())
+    sample = trainer.fabric.to_device(dataset.get_example(0))
     pretty_print_sample(dataset, sample)
 
     # If no activation layers are provided, we pass None/Empty to InferenceTrace
@@ -466,6 +961,18 @@ def main(args):
     if args.semantic_kernel_layer:
         print(f"Plotting Semantic Kernels for: {args.semantic_kernel_layer}")
         plotter.plot_semantic_kernels(args.semantic_kernel_layer, trainer.model.src_embed)
+
+    if args.plot_sensitivity:
+        print("Plotting Input Sensitivity...")
+        plotter.plot_input_sensitivity(trace)
+
+    if args.plot_mask:
+        print("Plotting Attention Mask...")
+        plotter.plot_mask(trace)
+
+    if args.plot_attention_sensitivity:
+        print("Plotting Attention Sensitivity...")
+        plotter.plot_attention_sensitivity(trace)
 
 
 if __name__ == "__main__":
@@ -519,6 +1026,34 @@ if __name__ == "__main__":
         type=str,
         default="",
         help="Layer name for semantic kernel analysis. Leave empty to skip.",
+    )
+
+    parser.add_argument(
+        "--n_digits",
+        type=int,
+        default=3,
+        help="Number of digits for the dataset sample (default: 3)",
+    )
+
+    parser.add_argument(
+        "--sensitivity",
+        action="store_true",
+        dest="plot_sensitivity",
+        help="Enable input sensitivity plotting (gradient-based attribution)",
+    )
+
+    parser.add_argument(
+        "--mask",
+        action="store_true",
+        dest="plot_mask",
+        help="Enable attention mask plotting from LensTransformer",
+    )
+
+    parser.add_argument(
+        "--attention-sensitivity",
+        action="store_true",
+        dest="plot_attention_sensitivity",
+        help="Enable attention sensitivity plotting (gradient-based attribution)",
     )
 
     args = parser.parse_args()

@@ -75,8 +75,8 @@ class AdditionDataset(DatasetBase):
         """
         return "".join(str(d.item()) for d in digits)
 
-    def get_example(self) -> Tensor:
-        sample = self.data[0]
+    def get_example(self, idx: int = 0) -> Tensor:
+        sample = self.data[idx]
 
         a = self._digits_to_string(sample[0])
         b = self._digits_to_string(sample[1])
