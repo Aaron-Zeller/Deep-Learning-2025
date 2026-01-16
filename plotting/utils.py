@@ -84,6 +84,10 @@ def overlay_grid_text(
     vhalf = (vmin + vmax) / 2
     lines = grid_str.split("\n")
 
+    # Adaptive font size based on grid dimensions
+    # Smaller grids get larger fonts, larger grids get smaller fonts
+    fontsize = max(7, min(11, 12 - w // 8))
+
     for y in range(h):
         for x in range(w):
             if x < len(lines[y]):
@@ -95,4 +99,4 @@ def overlay_grid_text(
                         char = "X"
 
                 color = "white" if data[y, x] < vhalf else "black"
-                ax.text(x, y, char, ha="center", va="center", color=color, fontsize=6)
+                ax.text(x, y, char, ha="center", va="center", color=color, fontsize=fontsize, fontweight='bold')

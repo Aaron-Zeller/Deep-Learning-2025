@@ -533,21 +533,23 @@ class Plotter:
                             overlay_grid_text(ax, sensitivity_map.cpu(), grid_str, 0, 1, (i, j))
 
                             # Formatting
-                            title_fontsize = max(8, min(12, 10 - w // 10))  # Adjust font size for wider grids
-                            ax.set_title(f"Layer {lay+1} Head {head+1}", fontsize=title_fontsize)
+                            title_fontsize = max(10, min(14, 12 - w // 15))  # Adjust font size for wider grids
+                            ax.set_title(f"Layer {lay+1} Head {head+1}", fontsize=title_fontsize, fontweight='bold')
                             ax.set_xticks([])
                             ax.set_yticks([])
 
                             # Add colorbar with adjusted size
                             divider = make_axes_locatable(ax)
                             cax = divider.append_axes("right", size="5%", pad=0.05)
-                            fig.colorbar(im, cax=cax)
+                            cbar = fig.colorbar(im, cax=cax)
+                            cbar.ax.tick_params(labelsize=9)
 
                 # Adjust title font size for wider grids
-                title_fontsize = max(12, min(16, 16 - w // 10))
+                title_fontsize = max(14, min(18, 18 - w // 15))
                 plt.suptitle(
                     f"Attention Sensitivity at Step {step_idx}, Position ({i},{j})",
                     fontsize=title_fontsize,
+                    fontweight='bold',
                 )
                 plt.tight_layout(rect=[0, 0, 1, 0.98])  # Leave space for suptitle
 
@@ -851,11 +853,12 @@ class Plotter:
                 divider = make_axes_locatable(ax)
                 cax = divider.append_axes("right", size="5%", pad=0.1)
                 cbar = fig.colorbar(im, cax=cax)
-                cbar.set_label("Sensitivity (normalized)", rotation=270, labelpad=15)
+                cbar.set_label("Sensitivity (normalized)", rotation=270, labelpad=15, fontsize=11)
+                cbar.ax.tick_params(labelsize=10)
 
                 # Title with adaptive font size
                 predicted_token = self.dataset.token_to_idx[v]
-                title_fontsize = max(10, min(14, 14 - w // 10))
+                title_fontsize = max(12, min(16, 16 - w // 15))
                 ax.set_title(
                     f"Step {step_idx}: Input Sensitivity\nPredicted: '{predicted_token}' at ({i},{j})",
                     fontsize=title_fontsize,
