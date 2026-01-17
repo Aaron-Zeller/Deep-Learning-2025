@@ -63,7 +63,7 @@ class RotaryPositionalEncoding(RelativePositionalEncodingBase):
         x_keep = x[..., 2 * self.dim :]
 
         # Apply rope to the sequence
-        x_rope = rearrange(x_rope, "b h (gh gw) d -> b (h gh gw) d")
+        x_rope = rearrange(x_rope, "b h (gh gw) d -> b (h gh gw) d", gh=h, gw=w)
         x_rope = self.rope.rotate_queries_or_keys(x_rope)
         x_rope = rearrange(x_rope, "b (h gh gw) d -> b h (gh gw) d", h=n_heads, gh=h, gw=w)
 
