@@ -1,0 +1,2 @@
+_target_: src.encodings.freq_2d.Frequency2DEncoding
+dim: ${model.dim}
