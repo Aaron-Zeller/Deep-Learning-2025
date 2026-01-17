@@ -1,0 +1,25 @@
+defaults:
+  - config
+  - override model: rope1d_encoding
+  - _self_
+
+name: transformer_rope1d_12d
+n_epochs: 1000
+proj_grad: false
+mix_grad: false
+val_min_digits: 1
+val_max_digits: 18
+
+head:
+  n_registers: 0
+
+dataset:
+  n_samples: 10000
+  max_digits: 3
+
+logging:
+  save_every_n_epochs: 3
+  val_every_n_epochs: 3
+
+runtime:
+  n_workers: 4
