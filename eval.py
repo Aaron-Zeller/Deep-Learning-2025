@@ -1,15 +1,15 @@
 import os
 import sys
 import argparse
+import csv
 from pathlib import Path
 from typing import List, Dict, Callable
-from tqdm import tqdm
-
-import torch
-from omegaconf import OmegaConf
 from tabulate import tabulate
 import logging
+import torch
+from omegaconf import OmegaConf
 
+# Assuming 'train' is available in your python path
 from train import Trainer
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -123,19 +123,53 @@ def load_trainer(model_path_str: str, ckpt_name: str, n_samples: int, digits: in
     return trainer
 
 
-def run_evaluation(config_path: str):
+def run_evaluation(config_path: str, args: argparse.Namespace):
     cfg = OmegaConf.load(config_path)
+
+    if args.model:
+        # args.model is a list of lists: [['Name', 'Path', 'Ckpt'], ...]
+        cfg.models = args.model
+        logger.info(f"Overriding models list with {len(args.model)} model(s) from CLI.")
+
+    if args.samples:
+        cfg.samples = args.samples
+        logger.info(f"Overriding samples with: {cfg.samples}")
+
+    # Determine digit range based on CLI args or config defaults
+    # Priority: CLI Args > Config Range Values > Default Fallback
+    c_min = args.min_digit if args.min_digit is not None else cfg.get("min_digit", 1)
+    c_max = args.max_digit if args.max_digit is not None else cfg.get("max_digit", 100)
+    c_stride = args.stride if args.stride is not None else 1
+    c_start = args.start_digit if args.start_digit is not None else c_min
+
+    # Check if we should generate a range or use the explicit list from config
+    use_range_generation = (
+        args.min_digit is not None
+        or args.max_digit is not None
+        or args.stride is not None
+        or args.start_digit is not None
+    )
+
+    if use_range_generation:
+        cfg.digits = list(range(c_start, c_max + 1, c_stride))
+        logger.info(f"Generated digit range: {cfg.digits} (start={c_start}, max={c_max}, stride={c_stride})")
+    elif not hasattr(cfg, "digits") or not cfg.digits:
+        # Fallback if no specific list exists in YAML and no CLI range provided
+        cfg.digits = list(range(c_min, c_max + 1, c_stride))
+        logger.info(f"Using default digit range: {cfg.digits}")
+
+    output_dir = Path(args.output_dir) if args.output_dir else (Path(cfg.outfile).parent if cfg.outfile else Path("."))
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     digit_range = cfg.digits
     n_samples = cfg.samples
 
     output_buffer = []
 
-    # all_results[metric_name][model_name][digit] = score
+    # [metric_name][model_name][digit] = score
     all_results = {m: {} for m in cfg.metrics if m in METRIC_REGISTRY}
 
     for model_entry in cfg.models:
-        # [name, path, ckpt]
         m_name, m_path, m_ckpt = model_entry[0], model_entry[1], str(model_entry[2])
         m_ckpt = f"ckpt_{m_ckpt}.pth"
 
@@ -150,7 +184,8 @@ def run_evaluation(config_path: str):
 
                 unrolled_grid = None
                 if any(m in ROLLOUT_METRICS for m in cfg.metrics):
-                    unrolled_grid = trainer.unroll_evaluation(k=d)
+                    if hasattr(trainer, "unroll_evaluation"):
+                        unrolled_grid = trainer.unroll_evaluation(k=d)
 
                 for metric_name in cfg.metrics:
                     if metric_name not in METRIC_REGISTRY:
@@ -167,38 +202,58 @@ def run_evaluation(config_path: str):
             del trainer
             torch.cuda.empty_cache()
 
-    # Metric extraction for output
+    # CSV export per digit
+    for d in digit_range:
+        csv_path = output_dir / f"eval_results_digit_{d}.csv"
+        try:
+            with open(csv_path, "w", newline="") as f:
+                writer = csv.writer(f)
+                header = ["Model"] + list(cfg.metrics)
+                writer.writerow(header)
+
+                for model_entry in cfg.models:
+                    m_name = model_entry[0]
+                    row = [m_name]
+                    for metric in cfg.metrics:
+                        if metric in all_results and m_name in all_results[metric]:
+                            score = all_results[metric][m_name].get(d, None)
+                            row.append(f"{score:.6f}" if score is not None else "")
+                        else:
+                            row.append("")
+                    writer.writerow(row)
+            logger.info(f"Saved CSV results for {d} digits to {csv_path}")
+        except Exception as e:
+            logger.error(f"Failed to write CSV for digit {d}: {e}")
+
+    # Print and store latex tables
     for metric_name in cfg.metrics:
+        if metric_name not in all_results:
+            continue
 
         logger.info(f"\n{'='*10} Evaluating: {metric_name} {'='*10}")
-
-        # {model_name: {digit: score}}
         results = all_results[metric_name]
 
         headers = ["Model"] + [f"{d}-digits" for d in digit_range]
+
+        # Prepare Rows
         table_rows = []
-
-        for m_name in results:
-            row = [m_name]
-            for d in digit_range:
-                val = results[m_name].get(d, 0.0)
-                row.append(f"{val:.2%}")
-            table_rows.append(row)
-
-        # console table
-        console_table = tabulate(table_rows, headers=headers, tablefmt="rounded_outline")
-        print(f"\nResults for {metric_name}:")
-        print(console_table)
-
-        # latex table
         latex_rows = []
+
         for m_name in results:
-            row = [m_name]
+            console_row = [m_name]
+            latex_row = [m_name]
             for d in digit_range:
                 val = results[m_name].get(d, 0.0)
-                row.append(f"{val*100:.1f}")
-            latex_rows.append(row)
+                console_row.append(f"{val:.2%}")
+                latex_row.append(f"{val*100:.1f}")
+            table_rows.append(console_row)
+            latex_rows.append(latex_row)
 
+        # Print Console Table
+        print(f"\nResults for {metric_name}:")
+        print(tabulate(table_rows, headers=headers, tablefmt="rounded_outline"))
+
+        # Store LaTeX Table
         latex_headers = ["Model"] + [str(d) for d in digit_range]
         latex_table = tabulate(latex_rows, headers=latex_headers, tablefmt="latex_booktabs")
 
@@ -206,7 +261,6 @@ def run_evaluation(config_path: str):
         output_buffer.append(latex_table)
         output_buffer.append("\n")
 
-    # Write latex tables to output file
     if cfg.outfile:
         out_path = Path(cfg.outfile)
         with open(out_path, "w") as f:
@@ -217,6 +271,27 @@ def run_evaluation(config_path: str):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Eval Models from YAML config")
     parser.add_argument("config", type=str, help="Path to evaluation .yaml file")
+
+    # Overrides
+    parser.add_argument("--samples", type=int, help="Override number of samples")
+    parser.add_argument("--output-dir", type=str, help="Directory to save CSVs")
+
+    # Range / Batching Arguments
+    parser.add_argument("--min-digit", type=int, help="Minimum digit length (defaults to config min)")
+    parser.add_argument("--max-digit", type=int, help="Maximum digit length (defaults to config max)")
+    parser.add_argument("--stride", type=int, help="Step size for digit range (default 1)")
+    parser.add_argument("--start-digit", type=int, help="Specific start point for this run (defaults to min)")
+
+    # Model override: Can be used multiple times
+    # Usage: --model "Name" "Path" "Checkpoint"
+    parser.add_argument(
+        "--model",
+        nargs=3,
+        action="append",
+        metavar=("NAME", "PATH", "CKPT"),
+        help="Override models list. Usage: --model 'Best' 'path/to/run' '100'",
+    )
+
     args = parser.parse_args()
 
-    run_evaluation(args.config)
+    run_evaluation(args.config, args)

@@ -1,3 +1,5 @@
+from typing import Literal
+
 import torch
 from einops import rearrange
 from rotary_embedding_torch import RotaryEmbedding
@@ -10,7 +12,7 @@ from src.utils import get_forward_metadata
 class RotaryPositionalEncoding(RelativePositionalEncodingBase):
     """Rotary positional encoding (Su et al., 2021)"""
 
-    def __init__(self, dim: int, theta: float = 10_000):
+    def __init__(self, dim: int, theta: float = 10_000, mode: Literal["1d", "2d"] = "2d"):
         """Initialize rotary positional encoding.
 
         Args:
@@ -23,16 +25,54 @@ class RotaryPositionalEncoding(RelativePositionalEncodingBase):
         # The user is responsible for ensuring that dim is correctly set
         self.dim = dim
         self.rope = RotaryEmbedding(dim=dim, theta=theta)
+        self.mode = mode
 
     def forward(self, q: Tensor, k: Tensor) -> tuple[Tensor, Tensor]:
         # Fetch the grid size
         orig_shape = get_forward_metadata("orig_shape")
         _, h, w = orig_shape
 
-        q = self._apply_2d_rope(q, h, w)
-        k = self._apply_2d_rope(k, h, w)
+        if self.mode == "1d":
+            q = self._apply_1d_rope(q, h, w)
+            k = self._apply_1d_rope(k, h, w)
+        elif self.mode == "2d":
+            q = self._apply_2d_rope(q, h, w)
+            k = self._apply_2d_rope(k, h, w)
 
         return q, k
+
+    def _apply_1d_rope(self, x: Tensor, h: int, w: int) -> Tensor:
+        """Apply 1D RoPE encoding to x. The features of x are being treated as a
+        sequence of length h*w, and the rotational encoding is being applied
+        on that sequence.
+
+        Args:
+            x: (b h s d) input tokens (with potential registers)
+            h: height of the grid
+            w: width of the grid
+        """
+        b, n_heads, s, d_full = x.shape
+
+        # Remove the head specific registers
+        n_registers = s - (h * w)
+        registers = x[..., :n_registers, :]
+        x = x[..., n_registers:, :]
+
+        # Not all features are used for rope
+        x_rope = x[..., : 2 * self.dim]
+        x_keep = x[..., 2 * self.dim :]
+
+        # Apply rope to the sequence
+        x_rope = rearrange(x_rope, "b h (gh gw) d -> b (h gh gw) d", gh=h, gw=w)
+        x_rope = self.rope.rotate_queries_or_keys(x_rope)
+        x_rope = rearrange(x_rope, "b (h gh gw) d -> b h (gh gw) d", h=n_heads, gh=h, gw=w)
+
+        # Concatenate back together
+        x = torch.cat([x_rope, x_keep], dim=-1)
+
+        # Add registers back
+        x = torch.cat([registers, x], dim=2)
+        return x
 
     def _apply_2d_rope(self, x: Tensor, h: int, w: int) -> Tensor:
         """Apply 2D RoPE encoding to x. The features of x are being splitted into

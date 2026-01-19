@@ -1,0 +1,9 @@
+defaults:
+  - encoder_only_small
+  - override pos_encoding: identity
+
+$mha:
+  relative_pos_encoding:
+    _target_: src.encodings.rope.RotaryPositionalEncoding
+    dim: 12
+    mode: 1d

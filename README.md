@@ -77,6 +77,16 @@ python plotting/plotter.py \
   --semantic_kernel_layer _forward_module.lens.0
 ```
 
+The full reference of arguments can be acquired via `python plotting/plotter.py --help`.
+
+## Evaluation
+
+```bash
+python eval.py eval_config.yaml
+```
+
+Parameters can be overwriten using CLI args found with `python eval.py --help`.
+
 ## References
 
 ```bibtex

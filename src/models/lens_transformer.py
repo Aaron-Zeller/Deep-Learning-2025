@@ -114,4 +114,4 @@ class LensTransformer(TransformerBase):
 
         memory, enc_attns = self.encoder(src_selected, mask=src_mask)
 
-        return memory, None, enc_attns, None, None, {"mask": mask}
+        return memory, None, enc_attns, None, None, {"mask": mask, "src_embed": src}

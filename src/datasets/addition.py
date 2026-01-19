@@ -1,4 +1,5 @@
 import logging
+from functools import lru_cache
 
 import torch
 from torch import Tensor
@@ -75,8 +76,8 @@ class AdditionDataset(DatasetBase):
         """
         return "".join(str(d.item()) for d in digits)
 
-    def get_example(self) -> Tensor:
-        sample = self.data[0]
+    def get_example(self, idx: int = 0) -> Tensor:
+        sample = self.data[idx]
 
         a = self._digits_to_string(sample[0])
         b = self._digits_to_string(sample[1])
@@ -153,6 +154,17 @@ class AdditionDataset(DatasetBase):
 
         return steps
 
+    @lru_cache(maxsize=4096)
+    def get_steps(self, sample_idx: int) -> list[str]:
+        sample = self.data[sample_idx]
+
+        a = self._digits_to_string(sample[0])
+        b = self._digits_to_string(sample[1])
+
+        steps = AdditionDataset.run_algorithm(a, b, self.separate_carry)
+
+        return steps
+
     def __getitem__(self, idx: int) -> tuple[Tensor, Tensor]:
         """Get a dataset item as 2D blackboard grid representation.
 
@@ -180,12 +192,7 @@ class AdditionDataset(DatasetBase):
         sample_idx = idx // self.seq_len
         seq_idx = idx % self.seq_len
 
-        sample = self.data[sample_idx]
-
-        a = self._digits_to_string(sample[0])
-        b = self._digits_to_string(sample[1])
-
-        steps = AdditionDataset.run_algorithm(a, b, self.separate_carry)
+        steps = self.get_steps(sample_idx)
 
         inp_step = torch.ones((self.h, self.w), dtype=torch.long) * self.token_to_idx.index("\n")
         out_step = torch.ones((self.h, self.w), dtype=torch.long) * self.token_to_idx.index("\n")
