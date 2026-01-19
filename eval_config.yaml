@@ -1,13 +1,13 @@
 outfile: evaluation_results.txt
-min_digit: 3
+min_digit: 5
 max_digit: 100
-digits: [3, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100]
+digits: [5, 10, 20, 50, 100]
 samples: 1000
 metrics:
   - step_accuracy
   - full_sample_accuracy
+  - full_sample_off_by_one
 
 models:
-  # [DisplayName, PathToOutputFolder, CheckpointNumber]
-  - ["SplitHead ($\\beta=7$)", "outputs/split_head_1_7/2026-01-12/17-11-14", 200]
-  - ["SplitHead ($\\beta=4$)", "outputs/split_head_1_4/2026-01-12/06-47-42", 200]
+  # [DisplayName, PathToOutputFolder, Checkpoint]
+  - ["Lens Transformer", "outputs/model_full", "best"]
