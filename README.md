@@ -1,4 +1,10 @@
-# Transformers as Algorithmic Reasoners: A 2D Blackboard Approach
+<h1 align="center">Lens Transformer<br><sub><sup>Length Generalization in Transformers for Algorithmic Addition</sup></sub></h1>
+
+<div align="center">
+
+[![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20Online_Demo-lens--transformer-yellow)](https://huggingface.co/spaces/gserifi/lens-transformer)&#160;
+<a href="https://polybox.ethz.ch/index.php/s/BbjxDRyDpdMQJA7" target="_blank"><img src="https://img.shields.io/badge/Polybox_Checkpoints-0063A6.svg?logo=icloud" height="21px"></a>
+</div>
 
 <div align="center">
 Cyril Moser
@@ -13,7 +19,12 @@ Aaron Zeller
 ETH Zurich, Switzerland
 </div>
 
+![Architecture Overview](assets/architecture.svg)
+
 ## Get Started
+
+This section outlines how to setup the local environment to execute training, evaluation, and plotting scripts.
+To see the model in action, you can also try out the [Demo](https://huggingface.co/spaces/gserifi/lens-transformer) without any setup.
 
 ### Create Virtual Environment
 
@@ -26,7 +37,7 @@ pip install -U pip # Good practice to update pip
 ### Install PyTorch and PyTorch Lightning
 
 ```bash
-# Should work for Apple Silicon and CUDA 12.8
+# Tested on Apple Silicon and CUDA 12.8
 # For other versions see https://pytorch.org/get-started/locally/
 pip install torch torchvision lightning
 ```
@@ -48,44 +59,68 @@ This will run `black` code formatting to ensure consistency. Note that if the ch
 ## Train
 
 ```bash
-python3 train.py
-# More examples:
-python3 train.py name=myexperiment
-python3 train.py model=encoder_only_small resume=true # finds latest checkpoint
-python3 train.py model=encoder_only_small resume_ckpt=outputs/exp/2025-11-16/16-47-17/checkpoints/ckpt_15.pth
-python3 train.py model=encoder_only_small dataset.n_samples=1000
+python3 train.py -cn <path_to_config>
+# Example: python3 train.py -cn model_full
+# Predefined configs can be found in the configs/ folder, remember to omit the .yaml suffix.
 ```
 
-## Tensorboard
+Alternatively, a pretrained checkpoint can be downloaded from [Polybox](https://polybox.ethz.ch/index.php/s/BbjxDRyDpdMQJA7) and used for evaluation or plotting.
+Create an `outputs` folder at the root directory and extract `model_full.zip` to match the following layout:
+
+```
+outputs
+└── model_full
+    ├── .hydra
+    │   ├── config.yaml
+    │   ├── hydra.yaml
+    │   └── overrides.yaml
+    └── checkpoints
+        └── ckpt_best.pth
+```
+
+Note that when training from scratch, these files will be organized in subfolders indicating the date and time of the current run `outputs/<model_name>/yyyy-mm-dd/hh-mm-ss/...`.
+
+## TensorBoard
+
+Training progress can be monitored using TensorBoard:
 
 ```bash
 tensorboard --logdir outputs/
 ```
 
+## Evaluation
+
+```bash
+python3 eval.py eval_config.yaml
+```
+
+Parameters can be overwritten using CLI args found with `python eval.py --help`.
+
+This script will write its outputs to the console, as a LaTeX table to `evaluation_results.txt`, and as per-digit CSV files `eval_results_digit_<d>.csv` by default.
+Note that for large sample counts, this may take some time to complete..
+
 ## Plotting
 
 ```
-python plotting/plotter.py \
---model_dir outputs/lens_transformer_3_3_3_3_1_nomask_proj_grad/2025-12-23/18-38-22 \
-  --ckpt ckpt_0120.pth \
+python3 plotting/plotter.py \
+--model_dir outputs/model_full \
+  --ckpt ckpt_best.pth \
   --activation_layers \
       _forward_module.lens.0 \
       _forward_module.lens.3 \
       _forward_module.lens.5 \
       _forward_module.lens.7 \
       _forward_module.lens.8 \
-  --semantic_kernel_layer _forward_module.lens.0
+  --semantic_kernel_layer _forward_module.lens.0 \
+  --sensitivity \
+  --attention-sensitivity \
+  --mask \
+  --n_digits 5
 ```
 
 The full reference of arguments can be acquired via `python plotting/plotter.py --help`.
 
-## Evaluation
-
-```bash
-python eval.py eval_config.yaml
-```
-
-Parameters can be overwriten using CLI args found with `python eval.py --help`.
+This script will write its outputs to `<model_dir>/plots/`. The warning message `findfont: Font family 'Times New Roman' not found.` can be ignored.
 
 ## References
 
