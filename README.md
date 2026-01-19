@@ -77,6 +77,8 @@ python plotting/plotter.py \
   --semantic_kernel_layer _forward_module.lens.0
 ```
 
+The full reference of arguments can be acquired via `python plotting/plotter.py --help`.
+
 ## References
 
 ```bibtex
